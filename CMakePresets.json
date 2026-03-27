@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "configurePresets": [
+    {
+      "name": "Debug",
+      "displayName": "Debug",
+      "description": "Debug build with all providers enabled",
+      "binaryDir": "${sourceDir}/../build/${presetName}",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../install/${presetName}",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_C_COMPILER_LAUNCHER": "/usr/bin/ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "/usr/bin/ccache",
+
+        "GPU_TARGETS": "gfx1100",
+        "KERNELGEN_ENABLE_GEMM": "ON",
+        "KERNELGEN_ENABLE_HIPBLASLT": "ON"
+      }
+    },
+    {
+      "name": "RelWithDebInfo",
+      "displayName": "RelWithDebInfo",
+      "description": "Release with debug info, all providers enabled",
+      "binaryDir": "${sourceDir}/../build/${presetName}",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../install/${presetName}",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_C_COMPILER_LAUNCHER": "/usr/bin/ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "/usr/bin/ccache",
+
+        "GPU_TARGETS": "gfx1100",
+        "KERNELGEN_ENABLE_GEMM": "ON",
+        "KERNELGEN_ENABLE_HIPBLASLT": "ON"
+      }
+    },
+    {
+      "name": "Release",
+      "displayName": "Release",
+      "description": "Optimized release build for benchmarking",
+      "binaryDir": "${sourceDir}/../build/${presetName}",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/../install/${presetName}",
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
+        "CMAKE_C_COMPILER_LAUNCHER": "/usr/bin/ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "/usr/bin/ccache",
+
+        "GPU_TARGETS": "gfx1100",
+        "KERNELGEN_ENABLE_GEMM": "ON",
+        "KERNELGEN_ENABLE_HIPBLASLT": "ON"
+      }
+    }
+  ]
+}

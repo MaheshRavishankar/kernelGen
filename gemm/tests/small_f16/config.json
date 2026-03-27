@@ -1,0 +1,15 @@
+{
+  "operation": "gemm",
+  "M": 1024,
+  "N": 1024,
+  "K": 1024,
+  "dtype_A": "f16",
+  "dtype_B": "f16",
+  "dtype_C": "f16",
+  "compute_type": "f32",
+  "transA": false,
+  "transB": false,
+  "alpha": 1.0,
+  "beta": 0.0,
+  "description": "Small square F16 GEMM for smoke testing"
+}

@@ -1,0 +1,5 @@
+# Build (builds go to ~/kernelGen/build/<preset>, outside source tree)
+CMakeUserPresets.json
+
+# Python
+.venv/
