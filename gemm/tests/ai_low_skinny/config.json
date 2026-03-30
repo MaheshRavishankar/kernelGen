@@ -1,0 +1,15 @@
+{
+  "operation": "gemm",
+  "M": 16,
+  "N": 512,
+  "K": 1024,
+  "dtype_A": "bf16",
+  "dtype_B": "bf16",
+  "dtype_C": "bf16",
+  "compute_type": "f32",
+  "transA": false,
+  "transB": false,
+  "alpha": 1.0,
+  "beta": 0.0,
+  "description": "Low AI, skinny M (AI=15.3)"
+}

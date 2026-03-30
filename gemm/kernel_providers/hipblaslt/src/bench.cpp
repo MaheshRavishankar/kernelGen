@@ -94,8 +94,24 @@ std::string readFile(const std::string &path) {
 
 void printUsage(const char *argv0) {
   std::cerr << "Usage: " << argv0
-            << " --config <config.json> --input-a <a.npy> --input-b <b.npy>"
-            << " [--warmup N] [--timed N] [--reference <c.npy>]\n";
+            << " --config <config.json> [--input-a <a.npy> --input-b <b.npy>]"
+            << " [--warmup N] [--timed N] [--reference <c.npy>]\n"
+            << "  If --input-a/--input-b are omitted, random data is "
+               "generated on device.\n";
+}
+
+// Fill device buffer with a repeating pattern of random host data.
+void fillRandom(void *dPtr, size_t bytes) {
+  const size_t chunkSize = 4096;
+  std::vector<char> hostBuf(chunkSize);
+  // Simple deterministic fill.
+  for (size_t i = 0; i < chunkSize; ++i)
+    hostBuf[i] = static_cast<char>((i * 7 + 13) & 0xFF);
+  for (size_t off = 0; off < bytes; off += chunkSize) {
+    size_t n = std::min(chunkSize, bytes - off);
+    hipMemcpy(static_cast<char *>(dPtr) + off, hostBuf.data(), n,
+              hipMemcpyHostToDevice);
+  }
 }
 
 } // namespace
@@ -124,10 +140,11 @@ int main(int argc, char **argv) {
     }
   }
 
-  if (configPath.empty() || inputAPath.empty() || inputBPath.empty()) {
+  if (configPath.empty()) {
     printUsage(argv[0]);
     return 1;
   }
+  bool randomInit = inputAPath.empty() || inputBPath.empty();
 
   std::string json = readFile(configPath);
 
@@ -153,21 +170,27 @@ int main(int argc, char **argv) {
   if (config.compute_type.empty())
     config.compute_type = "f32";
 
-  // Load inputs.
-  auto dataA = loadNpy(inputAPath);
-  auto dataB = loadNpy(inputBPath);
-
   size_t sizeA = config.M * config.K * dtypeSize(config.dtype_A);
   size_t sizeB = config.K * config.N * dtypeSize(config.dtype_B);
   size_t sizeC = config.M * config.N * dtypeSize(config.dtype_C);
 
-  // Allocate and copy to device.
+  // Allocate device memory.
   void *dA, *dB, *dC;
   hipMalloc(&dA, sizeA);
   hipMalloc(&dB, sizeB);
   hipMalloc(&dC, sizeC);
-  hipMemcpy(dA, dataA.data(), sizeA, hipMemcpyHostToDevice);
-  hipMemcpy(dB, dataB.data(), sizeB, hipMemcpyHostToDevice);
+
+  if (randomInit) {
+    // Fill with deterministic pattern — no .npy files needed.
+    fillRandom(dA, sizeA);
+    fillRandom(dB, sizeB);
+  } else {
+    // Load inputs from .npy files.
+    auto dataA = loadNpy(inputAPath);
+    auto dataB = loadNpy(inputBPath);
+    hipMemcpy(dA, dataA.data(), sizeA, hipMemcpyHostToDevice);
+    hipMemcpy(dB, dataB.data(), sizeB, hipMemcpyHostToDevice);
+  }
   hipMemset(dC, 0, sizeC);
 
   GemmResult result = run(config, dA, dB, dC, warmup, timed);

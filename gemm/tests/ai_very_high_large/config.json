@@ -1,0 +1,15 @@
+{
+  "operation": "gemm",
+  "M": 11520,
+  "N": 3840,
+  "K": 3840,
+  "dtype_A": "bf16",
+  "dtype_B": "bf16",
+  "dtype_C": "bf16",
+  "compute_type": "f32",
+  "transA": false,
+  "transB": false,
+  "alpha": 1.0,
+  "beta": 0.0,
+  "description": "Very high AI, large (AI=1645.7)"
+}

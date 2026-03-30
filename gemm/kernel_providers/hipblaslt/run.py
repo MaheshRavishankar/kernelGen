@@ -39,28 +39,27 @@ def run_one_test(bench: Path, test_dir: Path, warmup: int, timed: int, verify: b
     input_b = test_dir / "input_b.npy"
     output_c = test_dir / "output_c.npy"
 
-    for p in [config_path, input_a, input_b]:
-        if not p.exists():
-            print(f"SKIP: {test_dir.name} — {p.name} not found", file=sys.stderr)
-            return None, None
+    if not config_path.exists():
+        print(f"SKIP: {test_dir.name} — config.json not found", file=sys.stderr)
+        return None, None
 
     with open(config_path) as f:
         config = json.load(f)
+
+    has_inputs = input_a.exists() and input_b.exists()
 
     cmd = [
         str(bench),
         "--config",
         str(config_path),
-        "--input-a",
-        str(input_a),
-        "--input-b",
-        str(input_b),
         "--warmup",
         str(warmup),
         "--timed",
         str(timed),
     ]
-    if verify and output_c.exists():
+    if has_inputs:
+        cmd += ["--input-a", str(input_a), "--input-b", str(input_b)]
+    if verify and has_inputs and output_c.exists():
         cmd += ["--reference", str(output_c)]
 
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -148,6 +147,9 @@ def main():
     parser.add_argument(
         "--verify", action="store_true", help="Verify output against reference"
     )
+    parser.add_argument(
+        "--output", "-o", default=None, help="Write JSON results to file"
+    )
     args = parser.parse_args()
 
     if not args.test and not args.test_dir:
@@ -191,9 +193,14 @@ def main():
         f"{len(results)} passed, {failures} failed, {len(test_dirs) - len(results) - failures} skipped"
     )
 
-    # Emit JSON array for scripting.
+    # Emit JSON results.
     if results:
         print(json.dumps(results, indent=2))
+    if args.output and results:
+        with open(args.output, "w") as f:
+            json.dump(results, f, indent=2)
+            f.write("\n")
+        print(f"Results written to {args.output}")
 
 
 if __name__ == "__main__":

@@ -5,18 +5,17 @@ import argparse
 import json
 import os
 
+import ml_dtypes  # noqa: F401  (registers bfloat16 with numpy)
 import numpy as np
 
 DTYPE_MAP = {
     "f16": np.float16,
-    "bf16": "bfloat16",  # numpy >=1.24
+    "bf16": ml_dtypes.bfloat16,
     "f32": np.float32,
 }
 
 
 def get_numpy_dtype(dtype_str: str):
-    if dtype_str == "bf16":
-        return np.dtype("bfloat16")
     return np.dtype(DTYPE_MAP[dtype_str])
 
 
