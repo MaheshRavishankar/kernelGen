@@ -1,16 +1,14 @@
 # Kernel Providers
 
-Each subdirectory is a self-contained kernel provider for the GEMM operation. Providers are independent — they share no code or state with each other.
+Each subdirectory is a self-contained kernel provider for the GEMM operation. Providers share common utilities from `gemm/utils/` but are otherwise independent.
 
 ## Structure
 
 ```
 <provider>/
-  CMakeLists.txt          # Builds a static library + bench executable
+  CMakeLists.txt          # Builds bench executable (+ optional static library)
   run.py                  # Python benchmark runner (common CLI)
-  include/                # Public headers
   src/
-    <provider>_gemm.cpp   # GEMM implementation (library)
     bench.cpp             # Benchmark executable (loads config, runs GEMM, outputs JSON)
 ```
 
@@ -29,6 +27,7 @@ python gemm/kernel_providers/<provider>/run.py \
 ## Current providers
 
 - **hipblaslt** — AMD hipBLAS-LT library. Uses `hipblasLtMatmul` with algorithm heuristics.
+- **iree** — IREE compiler. Compiles `linalg.matmul` MLIR to GPU kernels, dispatches via IREE runtime with external HIP stream.
 
 ## Adding a new provider
 

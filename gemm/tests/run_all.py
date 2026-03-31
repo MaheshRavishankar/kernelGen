@@ -16,6 +16,7 @@ from pathlib import Path
 
 PROVIDERS = {
     "hipblaslt": "gemm/kernel_providers/hipblaslt/run.py",
+    "iree": "gemm/kernel_providers/iree/run.py",
 }
 
 

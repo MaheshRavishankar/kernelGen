@@ -24,7 +24,8 @@ target_compile_options(kernelgen_gemm_hipblaslt
 # Benchmark executable.
 add_executable(hipblaslt_gemm_bench src/bench.cpp)
 
-target_link_libraries(hipblaslt_gemm_bench PRIVATE kernelgen_gemm_hipblaslt)
+target_link_libraries(hipblaslt_gemm_bench PRIVATE kernelgen_gemm_hipblaslt
+                                                   kernelgen_gemm_hip_utils)
 
 target_compile_options(hipblaslt_gemm_bench
                        PRIVATE --offload-arch=${GPU_TARGETS})

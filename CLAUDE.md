@@ -19,12 +19,15 @@ kernelGen/
   scripts/                      # One-off helper scripts (test generation, shape selection)
     gemm/                       # GEMM-specific helper scripts
   gemm/                         # GEMM operation
+    utils/                      # Shared C++ utilities (config parsing, verification, HIP helpers)
     kernel_providers/
       hipblaslt/                # hipBLAS-LT provider
         run.py                  # Benchmark runner (common CLI)
         src/bench.cpp           # Benchmark executable
         src/hipblaslt_gemm.cpp  # GEMM implementation
-        include/hipblaslt_gemm.h
+      iree/                     # IREE provider
+        run.py                  # Benchmark runner (generates MLIR, compiles, runs)
+        src/bench.cpp           # Benchmark executable (IREE runtime + HIP events)
     tests/                      # Test cases (config.json + optional .npy files)
       run_all.py                # Run all tests for a provider
       generate_test.py          # Generate .npy data from config.json
@@ -34,11 +37,13 @@ kernelGen/
 ## Running tests
 
 ```bash
-# Run all GEMM tests with verification
-python gemm/tests/run_all.py --verify -o results.json
+# Run all GEMM tests with a specific provider
+python gemm/tests/run_all.py --provider hipblaslt --verify -o results.json
+python gemm/tests/run_all.py --provider iree --verify -o results.json
 
 # Run specific test
 python gemm/kernel_providers/hipblaslt/run.py --test gemm/tests/ai_high_medium --verify
+python gemm/kernel_providers/iree/run.py --test gemm/tests/ai_high_medium --verify
 
 # Roofline analysis
 python gemm/roofline.py results.json --arch gfx1100
@@ -58,4 +63,7 @@ Each test is a directory containing:
 - Build presets: Debug, RelWithDebInfo, Release (use Release for benchmarking)
 - TheRock/ROCm path defaults to `~/kernelGen/TheRock`, override with `-DTHEROCK_PATH=<path>`
 - GPU target defaults to `gfx1100`, override with `-DGPU_TARGETS=<target>`
-- Python dependencies: numpy, ml_dtypes (for bfloat16 support)
+- Python dependencies: numpy, ml_dtypes (for bfloat16 support), iree-base-compiler (for IREE provider)
+- IREE source defaults to `~/kernelGen/iree/iree/`, override with `-DIREE_SOURCE_DIR=<path>`
+- IREE .vmfb files cached in `~/.cache/kernelgen/vmfb/<gpu_target>/`
+- All providers use HIP events on a HIP stream for timing (apples-to-apples)
