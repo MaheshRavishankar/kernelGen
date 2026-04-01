@@ -5,5 +5,6 @@ CMakeUserPresets.json
 .venv/
 __pycache__/
 
-# rocprofv3 temp files (dropped in cwd during PMC collection)
+# rocprofv3 temp files (dropped in cwd during profiling)
 .rocprofv3/
+*.co

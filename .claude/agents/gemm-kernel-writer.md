@@ -59,8 +59,8 @@ python gemm/profiling/profile.py --provider native_hip --test gemm/tests/ai_very
 # Analyze
 python gemm/profiling/analyze.py /tmp/profile.json --arch gfx1100
 
-# Clean up rocprofv3 temp files
-rm -rf .rocprofv3/
+# Clean up rocprofv3 temp files (code objects + PMC dumps)
+rm -rf .rocprofv3/ *.co
 ```
 
 ### 5. Iterate

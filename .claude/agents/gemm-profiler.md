@@ -42,10 +42,10 @@ Or read the profile JSON directly and analyze it yourself for deeper insights.
 After every profiling run, remove stale rocprofv3 temp files:
 
 ```bash
-rm -rf .rocprofv3/
+rm -rf .rocprofv3/ *.co
 ```
 
-rocprofv3 drops `.dat` files in a `.rocprofv3/` directory in the current working directory during PMC collection. These are binary counter dumps that are not needed after the CSV output is generated. Always clean them up.
+rocprofv3 drops `.dat` files in a `.rocprofv3/` directory and `.co` (code object) files in the current working directory during profiling. These are not needed after the CSV output is generated. Always clean them up.
 
 ### 4. Deep Dive (when needed)
 
