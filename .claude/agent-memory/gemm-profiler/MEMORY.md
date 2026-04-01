@@ -1,0 +1,2 @@
+- [gfx1100 PMC zeros](quirk_gfx1100_pmc_zeros.md) — Most per-dispatch counters return 0 on RDNA3; only SQ_WAVES, SQ_BUSY_CYCLES, LDSBankConflict work
+- [gfx1100 counter groups](counter_gfx1100_groups.md) — Validated PMC counter compatibility groups for single-pass collection

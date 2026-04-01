@@ -18,6 +18,9 @@ kernelGen/
   docs/                         # Design docs and plans
   scripts/                      # One-off helper scripts (test generation, shape selection)
     gemm/                       # GEMM-specific helper scripts
+  profiling/                      # Generic rocprofv3 profiling infrastructure
+    rocprof.py                  # rocprofv3 wrapper (trace, PMC collection, CSV parsing)
+    gpu_specs.py                # GPU hardware specs (peak TFLOPS, bandwidth, CUs)
   gemm/                         # GEMM operation
     utils/                      # Shared C++ utilities (config parsing, verification, HIP helpers)
     kernel_providers/
@@ -32,6 +35,9 @@ kernelGen/
       run_all.py                # Run all tests for a provider
       generate_test.py          # Generate .npy data from config.json
     roofline.py                 # Roofline analysis (--arch or --peak-tflops/--peak-bw)
+    profiling/
+      profile.py                # GEMM profiling (wraps profiling/rocprof.py)
+      analyze.py                # GEMM bottleneck analysis (roofline + counter analysis)
 ```
 
 ## Running tests
@@ -47,7 +53,17 @@ python gemm/kernel_providers/iree/run.py --test gemm/tests/ai_high_medium --veri
 
 # Roofline analysis
 python gemm/roofline.py results.json --arch gfx1100
+
+# Profile a GEMM kernel (rocprofv3 trace + PMC counters)
+python gemm/profiling/profile.py --provider hipblaslt --test gemm/tests/ai_high_small -o profile.json
+
+# Analyze bottlenecks from profile
+python gemm/profiling/analyze.py profile.json --arch gfx1100
 ```
+
+## Profiling agent
+
+The `gemm-profiler` agent (`.claude/agents/gemm-profiler.md`) profiles GEMM kernels and analyzes bottlenecks using rocprofv3. It has persistent memory in `.claude/agent-memory/gemm-profiler/` where it stores learned patterns about counter interpretation and tool quirks.
 
 ## Test format
 
