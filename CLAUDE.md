@@ -31,6 +31,10 @@ kernelGen/
       iree/                     # IREE provider
         run.py                  # Benchmark runner (generates MLIR, compiles, runs)
         src/bench.cpp           # Benchmark executable (IREE runtime + HIP events)
+      native_hip/               # Native HIP provider (hand-written WMMA kernels)
+        run.py                  # Benchmark runner
+        src/bench.cpp           # Benchmark executable
+        src/native_hip_gemm.hip # WMMA GEMM kernel + host launch
     tests/                      # Test cases (config.json + optional .npy files)
       run_all.py                # Run all tests for a provider
       generate_test.py          # Generate .npy data from config.json
@@ -50,6 +54,7 @@ python gemm/tests/run_all.py --provider iree --verify -o results.json
 # Run specific test
 python gemm/kernel_providers/hipblaslt/run.py --test gemm/tests/ai_high_medium --verify
 python gemm/kernel_providers/iree/run.py --test gemm/tests/ai_high_medium --verify
+python gemm/kernel_providers/native_hip/run.py --test gemm/tests/ai_very_high_square
 
 # Roofline analysis
 python gemm/roofline.py results.json --arch gfx1100
@@ -61,9 +66,11 @@ python gemm/profiling/profile.py --provider hipblaslt --test gemm/tests/ai_high_
 python gemm/profiling/analyze.py profile.json --arch gfx1100
 ```
 
-## Profiling agent
+## Agents
 
 The `gemm-profiler` agent (`.claude/agents/gemm-profiler.md`) profiles GEMM kernels and analyzes bottlenecks using rocprofv3. It has persistent memory in `.claude/agent-memory/gemm-profiler/` where it stores learned patterns about counter interpretation and tool quirks.
+
+The `gemm-kernel-writer` agent (`.claude/agents/gemm-kernel-writer.md`) writes and optimizes native HIP GEMM kernels using WMMA intrinsics. It works in a profile-analyze-improve loop with the profiler agent and stores optimization findings in `.claude/agent-memory/gemm-kernel-writer/`.
 
 ## Test format
 
@@ -72,6 +79,7 @@ Each test is a directory containing:
 - `config.json` — M, N, K, dtypes, transpose, alpha/beta
 - `input_a.npy`, `input_b.npy`, `output_c.npy` — optional, for correctness verification
 - Tests without .npy files use random GPU-initialized data (benchmark-only)
+- `.npy` files must only be generated when total size of A+B+C is ≤ 50 MB (see `MAX_NPY_BYTES` in `scripts/gemm/create_benchmark_tests.py`). Larger tests are config-only (benchmark without committed reference data).
 
 ## Key conventions
 

@@ -13,3 +13,7 @@ endif()
 if(KERNELGEN_ENABLE_IREE)
   add_subdirectory(kernel_providers/iree)
 endif()
+
+if(KERNELGEN_ENABLE_NATIVE_HIP)
+  add_subdirectory(kernel_providers/native_hip)
+endif()

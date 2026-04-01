@@ -40,6 +40,11 @@ def find_bench_binary(build_dir: Path, provider: str) -> Path:
         / "hipblaslt"
         / "hipblaslt_gemm_bench",
         "iree": build_dir / "gemm" / "kernel_providers" / "iree" / "iree_gemm_bench",
+        "native_hip": build_dir
+        / "gemm"
+        / "kernel_providers"
+        / "native_hip"
+        / "native_hip_gemm_bench",
     }
     binary = binaries.get(provider)
     if not binary:
@@ -132,7 +137,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Profile a GEMM kernel using rocprofv3"
     )
-    parser.add_argument("--provider", required=True, choices=["hipblaslt", "iree"])
+    parser.add_argument(
+        "--provider", required=True, choices=["hipblaslt", "iree", "native_hip"]
+    )
     parser.add_argument("--test", required=True, help="Path to test directory")
     parser.add_argument("--build-dir", default=None)
     parser.add_argument("--rocprof", default=None, help="Path to rocprofv3 binary")

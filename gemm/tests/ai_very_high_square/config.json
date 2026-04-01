@@ -1,0 +1,15 @@
+{
+  "operation": "gemm",
+  "M": 4096,
+  "N": 4096,
+  "K": 4096,
+  "dtype_A": "bf16",
+  "dtype_B": "bf16",
+  "dtype_C": "bf16",
+  "compute_type": "f32",
+  "transA": false,
+  "transB": false,
+  "alpha": 1.0,
+  "beta": 0.0,
+  "description": "Very high AI (1365 FLOP/byte), square 4096^3 — ideal for native HIP WMMA kernel development"
+}
