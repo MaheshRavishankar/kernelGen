@@ -13,10 +13,11 @@ set(CMAKE_CXX_COMPILER "${HIP_HIPCC_EXECUTABLE}")
 add_library(
   kernelgen_gemm_native_hip STATIC
   src/native_hip_gemm.hip src/gemm_wmma_skinny.hip src/gemm_wmma_128x128.hip
-  src/gemm_wmma_128x128_boundary.hip)
+  src/gemm_wmma_128x128_boundary.hip src/kernelgen_gemm.hip)
 set_source_files_properties(
   src/native_hip_gemm.hip src/gemm_wmma_skinny.hip src/gemm_wmma_128x128.hip
-  src/gemm_wmma_128x128_boundary.hip PROPERTIES LANGUAGE CXX)
+  src/gemm_wmma_128x128_boundary.hip src/kernelgen_gemm.hip PROPERTIES LANGUAGE
+                                                                       CXX)
 
 target_include_directories(
   kernelgen_gemm_native_hip
