@@ -16,7 +16,10 @@ cmake --build ~/kernelGen/build/Release
 kernelGen/
   cmake/                        # Find modules for TheRock/ROCm dependencies
   docs/                         # Design docs and plans
+  .beads/                       # Beads issue tracker (config, DB, JSONL export)
   scripts/                      # One-off helper scripts (test generation, shape selection)
+    kernelgen-sandbox.sh        # bwrap sandbox for running agents on beads
+    setup-bwrap-apparmor.sh     # One-time AppArmor setup for bwrap (Ubuntu 24.04+)
     gemm/                       # GEMM-specific helper scripts
   profiling/                      # Generic rocprofv3 profiling infrastructure
     rocprof.py                  # rocprofv3 wrapper (trace, PMC collection, CSV parsing)
@@ -67,6 +70,16 @@ python gemm/profiling/analyze.py profile.json --arch gfx1100
 ```
 
 ## Agents
+
+Agents execute inside a **bubblewrap (bwrap) sandbox** via `scripts/kernelgen-sandbox.sh`. The sandbox enforces filesystem isolation: the main checkout is read-only (except `.beads/` and `.git/worktrees/`), the bead worktree and build directories are read-write, and SDKs are read-only. Claude runs with `--dangerously-skip-permissions` inside the sandbox, so the filesystem restrictions ARE the permission model.
+
+```bash
+# Launch a sandboxed agent for a bead
+scripts/kernelgen-sandbox.sh <bead-id> -- -p "Your task prompt here"
+
+# One-time AppArmor setup (Ubuntu 24.04+)
+sudo scripts/setup-bwrap-apparmor.sh
+```
 
 The `gemm-profiler` agent (`.claude/agents/gemm-profiler.md`) profiles GEMM kernels and analyzes bottlenecks using rocprofv3. It has persistent memory in `.claude/agent-memory/gemm-profiler/` where it stores learned patterns about counter interpretation and tool quirks.
 
