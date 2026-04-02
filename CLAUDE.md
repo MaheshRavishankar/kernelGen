@@ -16,7 +16,7 @@ cmake --build ~/kernelGen/build/Release
 kernelGen/
   cmake/                        # Find modules for TheRock/ROCm dependencies
   docs/                         # Design docs and plans
-  .beads/                       # Beads issue tracker (config, DB, JSONL export)
+  .beads/                       # Beads issue tracker (managed by `br` CLI)
   scripts/                      # One-off helper scripts (test generation, shape selection)
     kernelgen-sandbox.sh        # bwrap sandbox for running agents on beads
     setup-bwrap-apparmor.sh     # One-time AppArmor setup for bwrap (Ubuntu 24.04+)
@@ -93,6 +93,26 @@ Each test is a directory containing:
 - `input_a.npy`, `input_b.npy`, `output_c.npy` — optional, for correctness verification
 - Tests without .npy files use random GPU-initialized data (benchmark-only)
 - `.npy` files must only be generated when total size of A+B+C is ≤ 50 MB (see `MAX_NPY_BYTES` in `scripts/gemm/create_benchmark_tests.py`). Larger tests are config-only (benchmark without committed reference data).
+
+## Beads issue tracker
+
+Issues are managed with the `br` CLI (a Rust binary). **Never edit `.beads/issues.jsonl` by hand** — always use `br` commands. The JSONL file is auto-exported from the SQLite DB after each mutation.
+
+```bash
+# Common commands
+br list                              # List open issues
+br show <id>                         # Show issue details
+br ready                             # List unblocked issues
+br blocked                           # List blocked issues
+br create "Title" -d "Description" -t task -p 1  # Create issue
+br close <id> -r "Reason"            # Close issue
+br dep add <issue> <depends-on>      # Add dependency
+br dep tree <id>                     # Show dependency tree
+br update <id> -s in_progress        # Update status
+br search "keyword"                  # Search issues
+```
+
+Add `--json` to any command for machine-readable output.
 
 ## Key conventions
 
