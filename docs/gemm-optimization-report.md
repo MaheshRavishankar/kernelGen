@@ -4,9 +4,9 @@
 
 Optimized the native HIP WMMA GEMM kernel on gfx1100 (W7900) from 78.3 TFLOPS to
 79.5 TFLOPS (+1.5%), achieving parity with hipblaslt (~79 TFLOPS). Both kernels
-operate at 64-67% of the theoretical 123 TFLOPS BF16 peak, which appears to be the
-effective hardware limit due to sustained clock throttling (~1.6 GHz actual vs 2.5 GHz
-spec).
+operate at 64-67% of AMD's rated 123 TFLOPS BF16 peak. The gap is likely due to a
+combination of factors — memory system bottlenecks, occupancy limits, and pipeline
+efficiency — rather than any single cause.
 
 ## Baseline (4-warp kernel, pre-optimization)
 
@@ -89,9 +89,13 @@ halving sync count.
 - 22 s_waitcnt instructions
 
 **Clock analysis:** The W7900's sclk shows idle at ~0-10 MHz and supported levels
-up to 1760 MHz. With extended warmup (50 runs), both our kernel and hipblaslt
-achieve ~83 TFLOPS, suggesting the sustained compute clock is ~1.65 GHz. At this
-effective clock, our kernel operates at **97-100% of the hardware's actual throughput**.
+up to 1760 MHz (max boost). Note that AMD's 123 TFLOPS BF16 rating implies an
+effective clock of ~2.5 GHz (back-calculated from 48 CUs × ops_per_cycle), which
+is higher than the actual hardware clock spec. With extended warmup (50 runs), both
+our kernel and hipblaslt achieve ~83 TFLOPS. The ~65% efficiency relative to the
+rated 123 TFLOPS peak likely reflects a combination of the gap between marketing
+TFLOPS and achievable hardware clocks, memory latency, occupancy limits, and
+pipeline stalls rather than any single factor.
 
 ## Final Performance
 
@@ -136,9 +140,11 @@ Performance varies by ~3% across runs due to GPU clock/thermal dynamics.
    theoretical minimum for this workload matches the observed performance closely.
    No amount of kernel optimization can exceed this limit.
 
-1. **GPU clock throttling.** The W7900 specs 2.5 GHz boost but sustains ~1.6 GHz
-   under continuous matrix compute load. This explains why both our kernel and
-   hipblaslt achieve only 64-67% of the advertised 123 TFLOPS peak.
+1. **Efficiency gap vs rated peak.** Both our kernel and hipblaslt achieve only
+   64-67% of AMD's rated 123 TFLOPS BF16 peak. The rated peak implies an effective
+   clock of ~2.5 GHz (back-calculated), which exceeds the W7900's actual max boost
+   of 1760 MHz. The remaining gap is likely a combination of memory system latency,
+   occupancy constraints, and pipeline efficiency.
 
 1. **Global load serialization.** The two \_\_syncthreads per K-step create a bubble
    where all threads must complete their loads before any thread can compute. With
@@ -161,5 +167,6 @@ Performance varies by ~3% across runs due to GPU clock/thermal dynamics.
    better match specific problem shapes while maintaining similar LDS/VGPR budgets.
 
 1. **Clock frequency locking** — Running with forced high-performance clock (via
-   `rocm-smi --setperflevel high`) would establish the true peak achievable by the
-   kernel at maximum clock.
+   `rocm-smi --setperflevel high`) and monitoring actual clocks under load (via
+   `rocm-smi -c`) would help quantify how much of the efficiency gap is due to
+   clock behavior vs other factors.
