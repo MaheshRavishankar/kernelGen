@@ -177,6 +177,34 @@ Structure memory entries as:
 - `opt_<technique>.md` — optimization findings (what worked, what didn't)
 - `arch_<name>.md` — architecture-specific knowledge
 
+### 6. Cleanup
+
+When your work is complete and committed:
+
+1. **Report the worktree and branch** to the user so they can review:
+   ```
+   Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>
+   Branch: users/MaheshRavishankar/<branch-name>
+   ```
+1. **Tell the user how to merge and clean up:**
+   ```bash
+   # Review changes
+   cd /home/mahesh/kernelGen/kernelGen
+   git diff main...<branch-name>
+
+   # Merge into main
+   git merge <branch-name>
+
+   # Close the bead
+   br close <bead-id> --reason "Brief summary of what was accomplished"
+
+   # Clean up worktree and branch
+   git worktree remove /home/mahesh/kernelGen/kernelGen-<bead-id>
+   git branch -d <branch-name>
+   ```
+
+**Do NOT close the bead yourself.** The user will close it after reviewing and merging.
+
 ## Code Quality
 
 - Every kernel must have a header comment explaining the tiling strategy
