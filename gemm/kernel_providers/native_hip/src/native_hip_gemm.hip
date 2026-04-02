@@ -2,8 +2,9 @@
 // Native HIP GEMM — host dispatch logic
 //
 // Kernel implementations are in separate files:
-//   gemm_wmma_128x128.hip          — aligned kernel (M%128==0, N%128==0, K%32==0)
-//   gemm_wmma_128x128_boundary.hip — boundary kernel (arbitrary M, N, K)
+//   gemm_wmma_skinny.hip            — skinny-M kernel (M <= 32, BM=128 BN=16)
+//   gemm_wmma_128x128.hip           — aligned kernel (M%128==0, N%128==0, K%32==0)
+//   gemm_wmma_128x128_boundary.hip  — boundary kernel (arbitrary M, N, K)
 // =============================================================================
 
 #include "native_hip_gemm.h"
@@ -14,6 +15,13 @@
 #include <string>
 
 // Forward declarations of kernel functions defined in separate TUs.
+__global__ void gemm_wmma_skinny(
+    const __hip_bfloat16 *__restrict__ A,
+    const __hip_bfloat16 *__restrict__ B,
+    __hip_bfloat16 *__restrict__ C,
+    const int M, const int N, const int K,
+    const float alpha);
+
 __global__ void gemm_wmma_128x128(
     const __hip_bfloat16 *__restrict__ A,
     const __hip_bfloat16 *__restrict__ B,
@@ -36,12 +44,6 @@ namespace kernelgen {
 namespace gemm {
 namespace native_hip {
 
-// Tile dimensions must match the kernel files.
-static constexpr int BM = 128;
-static constexpr int BN = 128;
-static constexpr int BK = 32;
-static constexpr int BLOCK_SIZE = 256;
-
 static inline int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
@@ -63,24 +65,45 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   const int K = config.K;
   const float alpha = config.alpha;
 
-  // Select kernel: use the fast aligned kernel when M, N, K are all aligned,
-  // otherwise use the boundary kernel that handles arbitrary dimensions.
-  const bool aligned = (M % BM == 0) && (N % BN == 0) && (K % BK == 0);
+  // Select kernel by M dimension, then by alignment.
+  // Skinny-M kernel uses BM=128, BN=16 tiles: oversized BM gives 8 warps for
+  // latency hiding, narrow BN maximizes grid parallelism along N.
+  dim3 grid;
+  dim3 block;
 
-  dim3 grid(ceil_div(M, BM), ceil_div(N, BN));
-  dim3 block(BLOCK_SIZE);
+  enum KernelChoice { SKINNY, ALIGNED_128, BOUNDARY_128 };
+  KernelChoice choice;
+
+  if (M <= 32) {
+    // Skinny kernel: BM=128, BN=16, 256 threads (8 warps).
+    // Oversized BM gives more waves for latency hiding; OOB warps help load.
+    grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
+    block = dim3(256);
+    choice = SKINNY;
+  } else if ((M % 128 == 0) && (N % 128 == 0) && (K % 32 == 0)) {
+    grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
+    block = dim3(256);
+    choice = ALIGNED_128;
+  } else {
+    grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
+    block = dim3(256);
+    choice = BOUNDARY_128;
+  }
 
   auto launch = [&](hipStream_t stream) {
-    if (aligned) {
-      gemm_wmma_128x128<<<grid, block, 0, stream>>>(
-          static_cast<const __hip_bfloat16 *>(A),
-          static_cast<const __hip_bfloat16 *>(B),
-          static_cast<__hip_bfloat16 *>(C), M, N, K, alpha);
-    } else {
-      gemm_wmma_128x128_boundary<<<grid, block, 0, stream>>>(
-          static_cast<const __hip_bfloat16 *>(A),
-          static_cast<const __hip_bfloat16 *>(B),
-          static_cast<__hip_bfloat16 *>(C), M, N, K, alpha);
+    auto *dA = static_cast<const __hip_bfloat16 *>(A);
+    auto *dB = static_cast<const __hip_bfloat16 *>(B);
+    auto *dC = static_cast<__hip_bfloat16 *>(C);
+    switch (choice) {
+    case SKINNY:
+      gemm_wmma_skinny<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      break;
+    case ALIGNED_128:
+      gemm_wmma_128x128<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      break;
+    case BOUNDARY_128:
+      gemm_wmma_128x128_boundary<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      break;
     }
   };
 
