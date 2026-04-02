@@ -46,18 +46,6 @@ def run_one_test(bench: Path, test_dir: Path, warmup: int, timed: int, verify: b
     with open(config_path) as f:
         config = json.load(f)
 
-    # Check alignment constraints for this kernel.
-    M, N, K = config["M"], config["N"], config["K"]
-    if M % 128 != 0 or N % 128 != 0:
-        print(
-            f"SKIP: {test_dir.name} — M={M}, N={N} not multiples of 128",
-            file=sys.stderr,
-        )
-        return config, None
-    if K % 16 != 0:
-        print(f"SKIP: {test_dir.name} — K={K} not a multiple of 16", file=sys.stderr)
-        return config, None
-
     has_inputs = input_a.exists() and input_b.exists()
 
     cmd = [

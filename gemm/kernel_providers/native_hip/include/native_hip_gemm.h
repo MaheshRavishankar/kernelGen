@@ -32,7 +32,7 @@ struct GemmResult {
 ///   A, B, C are device pointers, already allocated and populated.
 ///   Currently supports: BF16 inputs, F32 accumulation, BF16 output.
 ///   Requires: transA=false, transB=false (NN layout).
-///   M and N must be multiples of 128, K must be a multiple of 16.
+///   Supports arbitrary M, N, K (boundary handling for non-aligned dimensions).
 GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
                int warmup_runs = 5, int timed_runs = 20);
 
