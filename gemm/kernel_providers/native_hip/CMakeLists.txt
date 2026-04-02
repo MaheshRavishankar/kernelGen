@@ -10,8 +10,13 @@ set(CMAKE_CXX_COMPILER "${HIP_HIPCC_EXECUTABLE}")
 
 # Static library containing the kernel(s) and host launch code. The .hip
 # extension is compiled as HIP language via -x hip flag.
-add_library(kernelgen_gemm_native_hip STATIC src/native_hip_gemm.hip)
-set_source_files_properties(src/native_hip_gemm.hip PROPERTIES LANGUAGE CXX)
+add_library(
+  kernelgen_gemm_native_hip STATIC
+  src/native_hip_gemm.hip src/gemm_wmma_128x128.hip
+  src/gemm_wmma_128x128_boundary.hip)
+set_source_files_properties(
+  src/native_hip_gemm.hip src/gemm_wmma_128x128.hip
+  src/gemm_wmma_128x128_boundary.hip PROPERTIES LANGUAGE CXX)
 
 target_include_directories(
   kernelgen_gemm_native_hip
