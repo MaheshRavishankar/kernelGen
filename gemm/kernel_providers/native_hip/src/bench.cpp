@@ -37,9 +37,16 @@ GemmResult runViaDispatch(const GemmConfig &config, void *A, void *B, void *C,
   dc.transB = config.transB ? 1 : 0;
   dc.alpha = config.alpha;
   dc.beta = config.beta;
-  dc.dtype_A = KERNELGEN_BF16;
-  dc.dtype_B = KERNELGEN_BF16;
-  dc.dtype_C = KERNELGEN_BF16;
+  auto toDtype = [](const std::string &s) -> kernelgen_dtype_t {
+    if (s == "f16")
+      return KERNELGEN_F16;
+    if (s == "f32")
+      return KERNELGEN_F32;
+    return KERNELGEN_BF16;
+  };
+  dc.dtype_A = toDtype(config.dtype_A);
+  dc.dtype_B = toDtype(config.dtype_B);
+  dc.dtype_C = toDtype(config.dtype_C);
   dc.compute_type = KERNELGEN_F32;
 
   kernelgen_status_t status = kernelgen_gemm_supported(&dc);

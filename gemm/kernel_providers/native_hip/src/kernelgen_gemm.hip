@@ -8,36 +8,37 @@
 #include "kernelgen_gemm.h"
 
 #include <hip/hip_bf16.h>
+#include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
-// Forward declarations of kernel functions defined in separate TUs.
+#include <type_traits>
+
+// Forward declarations of templated kernel functions defined in separate TUs.
+template <typename T>
 __global__ void gemm_wmma_skinny(
-    const __hip_bfloat16 *__restrict__ A,
-    const __hip_bfloat16 *__restrict__ B,
-    __hip_bfloat16 *__restrict__ C,
-    const int M, const int N, const int K,
-    const float alpha);
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
 
+template <typename T>
 __global__ void gemm_wmma_128x128(
-    const __hip_bfloat16 *__restrict__ A,
-    const __hip_bfloat16 *__restrict__ B,
-    __hip_bfloat16 *__restrict__ C,
-    const int M, const int N, const int K,
-    const float alpha);
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
 
+template <typename T>
 __global__ void gemm_wmma_128x128_boundary(
-    const __hip_bfloat16 *__restrict__ A,
-    const __hip_bfloat16 *__restrict__ B,
-    __hip_bfloat16 *__restrict__ C,
-    const int M, const int N, const int K,
-    const float alpha);
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
 
 static inline int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
 static kernelgen_status_t validate_config(const kernelgen_gemm_config_t *config) {
-    if (config->dtype_A != KERNELGEN_BF16 ||
-        config->dtype_B != KERNELGEN_BF16 ||
-        config->dtype_C != KERNELGEN_BF16) {
+    const bool is_bf16 = (config->dtype_A == KERNELGEN_BF16 &&
+                          config->dtype_B == KERNELGEN_BF16 &&
+                          config->dtype_C == KERNELGEN_BF16);
+    const bool is_f16 = (config->dtype_A == KERNELGEN_F16 &&
+                         config->dtype_B == KERNELGEN_F16 &&
+                         config->dtype_C == KERNELGEN_F16);
+    if (!is_bf16 && !is_f16) {
         return KERNELGEN_ERROR_UNSUPPORTED_DTYPE;
     }
     if (config->transA != 0 || config->transB != 0) {
@@ -73,25 +74,33 @@ extern "C" kernelgen_status_t kernelgen_gemm(
     const int N = static_cast<int>(config->N);
     const int K = static_cast<int>(config->K);
     const float alpha = config->alpha;
+    const bool is_f16 = (config->dtype_A == KERNELGEN_F16);
 
-    const auto *dA = static_cast<const __hip_bfloat16 *>(A);
-    const auto *dB = static_cast<const __hip_bfloat16 *>(B);
-    auto *dC = static_cast<__hip_bfloat16 *>(C);
+    // Templated dispatch helper.
+    auto dispatch = [&](auto *typed_null) {
+        using T = std::remove_pointer_t<decltype(typed_null)>;
+        const auto *dA = static_cast<const T *>(A);
+        const auto *dB = static_cast<const T *>(B);
+        auto *dC = static_cast<T *>(C);
 
-    dim3 grid, block(256);
+        dim3 grid, block(256);
 
-    if (M <= 32) {
-        // Skinny kernel: BM=128, BN=16, 256 threads.
-        grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
-        gemm_wmma_skinny<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
-    } else if ((M % 128 == 0) && (N % 128 == 0) && (K % 32 == 0)) {
-        // Aligned 128x128 kernel.
-        grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
-        gemm_wmma_128x128<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+        if (M <= 32) {
+            grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
+            gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+        } else if ((M % 128 == 0) && (N % 128 == 0) && (K % 32 == 0)) {
+            grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
+            gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+        } else {
+            grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
+            gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+        }
+    };
+
+    if (is_f16) {
+        dispatch(static_cast<_Float16 *>(nullptr));
     } else {
-        // Boundary 128x128 kernel.
-        grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
-        gemm_wmma_128x128_boundary<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+        dispatch(static_cast<__hip_bfloat16 *>(nullptr));
     }
 
     hipError_t err = hipGetLastError();

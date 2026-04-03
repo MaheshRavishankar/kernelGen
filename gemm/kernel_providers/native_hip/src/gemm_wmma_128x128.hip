@@ -37,13 +37,17 @@ static constexpr int WARP_TILES_N = WN / WMMA_N;
 
 // 8 warps with smaller warp tiles: 120 VGPRs, 0 scratch, high occupancy.
 // Hint 3 WGs/CU (max from LDS limit: 3*20480=61440 < 65536).
+template <typename ElemT>
 __global__ __launch_bounds__(BLOCK_SIZE, 3)
 void gemm_wmma_128x128(
-    const __hip_bfloat16 *__restrict__ A, // [M, K] row-major
-    const __hip_bfloat16 *__restrict__ B, // [K, N] row-major
-    __hip_bfloat16 *__restrict__ C,       // [M, N] row-major
+    const ElemT *__restrict__ A, // [M, K] row-major
+    const ElemT *__restrict__ B, // [K, N] row-major
+    ElemT *__restrict__ C,       // [M, N] row-major
     const int M, const int N, const int K,
     const float alpha) {
+
+  using Traits = WmmaTraits<ElemT>;
+  using frag_t = typename Traits::frag_type;
 
   // Block coordinates: each block computes a BM x BN output tile.
   const int block_m = blockIdx.x * BM;
@@ -61,8 +65,8 @@ void gemm_wmma_128x128(
   // -------------------------------------------------------------------------
   // Shared memory: A tile [BM][SMEM_STRIDE] and B transposed tile [BN][SMEM_STRIDE]
   // -------------------------------------------------------------------------
-  __shared__ __hip_bfloat16 smem_A[BM * SMEM_STRIDE];
-  __shared__ __hip_bfloat16 smem_BT[BN * SMEM_STRIDE];
+  __shared__ ElemT smem_A[BM * SMEM_STRIDE];
+  __shared__ ElemT smem_BT[BN * SMEM_STRIDE];
 
   // -------------------------------------------------------------------------
   // Accumulators: 2x4 grid of 16x16 F32 tiles per warp = 8 tiles total.
@@ -81,14 +85,14 @@ void gemm_wmma_128x128(
   // -------------------------------------------------------------------------
   // Loading strategy for 256 threads:
   //
-  // A tile: BM x BK = 128 x 32 bf16. 256 threads, 2 per row.
+  // A tile: BM x BK = 128 x 32 elements. 256 threads, 2 per row.
   //   Thread tid: row = tid/2, half = tid%2
   //   Half 0: loads columns 0-15 (2 uint4), Half 1: columns 16-31 (2 uint4)
   //
-  // B tile: BK x BN = 32 x 128 bf16, transposed to [BN][BK] = [128][32].
+  // B tile: BK x BN = 32 x 128 elements, transposed to [BN][BK] = [128][32].
   //   Thread tid: col = tid%128, group = tid/128
   //   Group 0: loads rows 0-15, Group 1: rows 16-31
-  //   Each group: 8 paired bf16 loads per thread
+  //   Each group: 8 paired loads per thread
   // -------------------------------------------------------------------------
   const int a_load_row = tid / 2;
   const int a_load_half = tid % 2;
@@ -103,12 +107,12 @@ void gemm_wmma_128x128(
     // -----------------------------------------------------------------------
     // Stage 1: Load A tile from global -> shared memory
     //
-    // 256 threads, 2 per row. Each loads 16 bf16 (32 bytes) via two uint4.
+    // 256 threads, 2 per row. Each loads 16 elements (32 bytes) via two uint4.
     // -----------------------------------------------------------------------
     {
-      const __hip_bfloat16 *a_src =
+      const ElemT *a_src =
           A + (int64_t)(block_m + a_load_row) * K + k_base + a_load_half * 16;
-      __hip_bfloat16 *a_dst =
+      ElemT *a_dst =
           smem_A + a_load_row * SMEM_STRIDE + a_load_half * 16;
 
       load_128(a_dst, a_src);
@@ -123,19 +127,19 @@ void gemm_wmma_128x128(
     // for all 128 columns.
     // -----------------------------------------------------------------------
     {
-      __hip_bfloat16 *bt_dst =
+      ElemT *bt_dst =
           smem_BT + b_load_col * SMEM_STRIDE + b_load_group * 16;
 
       #pragma unroll
       for (int k = 0; k < 16; k += 2) {
         int row = b_load_group * 16 + k;
-        __hip_bfloat16 v0 =
+        ElemT v0 =
             B[(int64_t)(k_base + row) * N + (block_n + b_load_col)];
-        __hip_bfloat16 v1 =
+        ElemT v1 =
             B[(int64_t)(k_base + row + 1) * N + (block_n + b_load_col)];
         uint packed;
-        reinterpret_cast<__hip_bfloat16 *>(&packed)[0] = v0;
-        reinterpret_cast<__hip_bfloat16 *>(&packed)[1] = v1;
+        reinterpret_cast<ElemT *>(&packed)[0] = v0;
+        reinterpret_cast<ElemT *>(&packed)[1] = v1;
         *reinterpret_cast<uint *>(bt_dst + k) = packed;
       }
     }
@@ -147,24 +151,23 @@ void gemm_wmma_128x128(
     // -----------------------------------------------------------------------
     #pragma unroll
     for (int ki = 0; ki < BK; ki += WMMA_K) {
-      bf16x16 a_frag[WARP_TILES_M];
+      frag_t a_frag[WARP_TILES_M];
       #pragma unroll
       for (int tm = 0; tm < WARP_TILES_M; tm++) {
         int smem_row = warp_m * WM + tm * WMMA_M + frag_row;
-        const __hip_bfloat16 *frag_ptr = smem_A + smem_row * SMEM_STRIDE + ki;
-        a_frag[tm] = *reinterpret_cast<const bf16x16 *>(frag_ptr);
+        const ElemT *frag_ptr = smem_A + smem_row * SMEM_STRIDE + ki;
+        a_frag[tm] = *reinterpret_cast<const frag_t *>(frag_ptr);
       }
 
       #pragma unroll
       for (int tn = 0; tn < WARP_TILES_N; tn++) {
         int smem_row = warp_n * WN + tn * WMMA_N + frag_row;
-        const __hip_bfloat16 *frag_ptr = smem_BT + smem_row * SMEM_STRIDE + ki;
-        bf16x16 b_frag = *reinterpret_cast<const bf16x16 *>(frag_ptr);
+        const ElemT *frag_ptr = smem_BT + smem_row * SMEM_STRIDE + ki;
+        frag_t b_frag = *reinterpret_cast<const frag_t *>(frag_ptr);
 
         #pragma unroll
         for (int tm = 0; tm < WARP_TILES_M; tm++) {
-          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(
-              a_frag[tm], b_frag, acc[tm][tn]);
+          acc[tm][tn] = Traits::wmma(a_frag[tm], b_frag, acc[tm][tn]);
         }
       }
     }
@@ -173,16 +176,16 @@ void gemm_wmma_128x128(
   }
 
   // =========================================================================
-  // Store results: convert F32 accumulators to BF16 and write to global C
+  // Store results: convert F32 accumulators and write to global C
   //
   // WMMA C layout (gfx1100, wave32):
   //   Lane l < 16:  holds C[l][0], C[l][2], ..., C[l][14] (even columns)
   //   Lane l >= 16: holds C[l-16][1], C[l-16][3], ..., C[l-16][15] (odd cols)
   //   i.e., acc[j] = C[lane%16][2*j + (lane >= 16 ? 1 : 0)]
   //
-  // Each lane writes its 8 bf16 values per WMMA tile directly to global C.
+  // Each lane writes its 8 values per WMMA tile directly to global C.
   // Adjacent lanes write to stride-2 addresses in the same row, which the
-  // hardware can partially coalesce (32-byte cache lines cover 16 bf16).
+  // hardware can partially coalesce (32-byte cache lines cover 16 elements).
   // =========================================================================
   {
     const int row_in_frag = lane_id % 16;
@@ -199,9 +202,17 @@ void gemm_wmma_128x128(
         for (int j = 0; j < 8; j++) {
           int col = base_n + 2 * j + col_offset;
           float val = alpha * acc[tm][tn][j];
-          C[(int64_t)base_m * N + col] = __hip_bfloat16(val);
+          C[(int64_t)base_m * N + col] = ElemT(val);
         }
       }
     }
   }
 }
+
+// Explicit instantiations.
+template __global__ void gemm_wmma_128x128<__hip_bfloat16>(
+    const __hip_bfloat16 *, const __hip_bfloat16 *, __hip_bfloat16 *,
+    int, int, int, float);
+template __global__ void gemm_wmma_128x128<_Float16>(
+    const _Float16 *, const _Float16 *, _Float16 *,
+    int, int, int, float);

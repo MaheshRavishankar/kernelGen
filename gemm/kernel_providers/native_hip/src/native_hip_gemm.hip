@@ -10,31 +10,27 @@
 #include "native_hip_gemm.h"
 
 #include <hip/hip_bf16.h>
+#include <hip/hip_fp16.h>
 #include <hip/hip_runtime.h>
 
 #include <string>
+#include <type_traits>
 
-// Forward declarations of kernel functions defined in separate TUs.
+// Forward declarations of templated kernel functions defined in separate TUs.
+template <typename T>
 __global__ void gemm_wmma_skinny(
-    const __hip_bfloat16 *__restrict__ A,
-    const __hip_bfloat16 *__restrict__ B,
-    __hip_bfloat16 *__restrict__ C,
-    const int M, const int N, const int K,
-    const float alpha);
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
 
+template <typename T>
 __global__ void gemm_wmma_128x128(
-    const __hip_bfloat16 *__restrict__ A,
-    const __hip_bfloat16 *__restrict__ B,
-    __hip_bfloat16 *__restrict__ C,
-    const int M, const int N, const int K,
-    const float alpha);
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
 
+template <typename T>
 __global__ void gemm_wmma_128x128_boundary(
-    const __hip_bfloat16 *__restrict__ A,
-    const __hip_bfloat16 *__restrict__ B,
-    __hip_bfloat16 *__restrict__ C,
-    const int M, const int N, const int K,
-    const float alpha);
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
 
 // =============================================================================
 // Host launch
@@ -55,8 +51,10 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
     result.error = "native_hip: only NN layout (transA=false, transB=false) supported";
     return result;
   }
-  if (config.dtype_A != "bf16" || config.dtype_B != "bf16" || config.dtype_C != "bf16") {
-    result.error = "native_hip: only BF16 data types supported";
+  const bool is_bf16 = (config.dtype_A == "bf16" && config.dtype_B == "bf16" && config.dtype_C == "bf16");
+  const bool is_f16 = (config.dtype_A == "f16" && config.dtype_B == "f16" && config.dtype_C == "f16");
+  if (!is_bf16 && !is_f16) {
+    result.error = "native_hip: only BF16 or F16 data types supported";
     return result;
   }
 
@@ -90,20 +88,30 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
     choice = BOUNDARY_128;
   }
 
-  auto launch = [&](hipStream_t stream) {
-    auto *dA = static_cast<const __hip_bfloat16 *>(A);
-    auto *dB = static_cast<const __hip_bfloat16 *>(B);
-    auto *dC = static_cast<__hip_bfloat16 *>(C);
+  // Templated launch helper: dispatches to the correct kernel instantiation.
+  auto launch_typed = [&](hipStream_t stream, auto *typed_null) {
+    using T = std::remove_pointer_t<decltype(typed_null)>;
+    auto *dA = static_cast<const T *>(A);
+    auto *dB = static_cast<const T *>(B);
+    auto *dC = static_cast<T *>(C);
     switch (choice) {
     case SKINNY:
-      gemm_wmma_skinny<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
       break;
     case ALIGNED_128:
-      gemm_wmma_128x128<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
       break;
     case BOUNDARY_128:
-      gemm_wmma_128x128_boundary<<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
       break;
+    }
+  };
+
+  auto launch = [&](hipStream_t stream) {
+    if (is_f16) {
+      launch_typed(stream, static_cast<_Float16 *>(nullptr));
+    } else {
+      launch_typed(stream, static_cast<__hip_bfloat16 *>(nullptr));
     }
   };
 

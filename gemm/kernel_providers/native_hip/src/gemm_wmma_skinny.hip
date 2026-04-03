@@ -42,13 +42,17 @@ static constexpr int BLOCK_SIZE = NUM_WARPS * WARP_SIZE; // 256
 // Skinny-M GEMM kernel
 // =============================================================================
 
+template <typename ElemT>
 __global__ __launch_bounds__(BLOCK_SIZE, 3)
 void gemm_wmma_skinny(
-    const __hip_bfloat16 *__restrict__ A, // [M, K] row-major
-    const __hip_bfloat16 *__restrict__ B, // [K, N] row-major
-    __hip_bfloat16 *__restrict__ C,       // [M, N] row-major
+    const ElemT *__restrict__ A, // [M, K] row-major
+    const ElemT *__restrict__ B, // [K, N] row-major
+    ElemT *__restrict__ C,       // [M, N] row-major
     const int M, const int N, const int K,
     const float alpha) {
+
+  using Traits = WmmaTraits<ElemT>;
+  using frag_t = typename Traits::frag_type;
 
   const int block_m = blockIdx.x * BM;
   const int block_n = blockIdx.y * BN;
@@ -60,8 +64,8 @@ void gemm_wmma_skinny(
   // 8 warps stacked in M direction.
   const int warp_m = warp_id; // 0..7
 
-  __shared__ __hip_bfloat16 smem_A[BM * SMEM_STRIDE];
-  __shared__ __hip_bfloat16 smem_BT[BN * SMEM_STRIDE];
+  __shared__ ElemT smem_A[BM * SMEM_STRIDE];
+  __shared__ ElemT smem_BT[BN * SMEM_STRIDE];
 
   f32x8 acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
 
@@ -70,9 +74,9 @@ void gemm_wmma_skinny(
   // -------------------------------------------------------------------------
   // Loading strategy for 256 threads:
   //
-  // A tile: BM x BK = 128 x 32 bf16.
+  // A tile: BM x BK = 128 x 32 elements.
   //   256 threads: row = tid/2 (0..127), half = tid%2 (0 or 1)
-  //   Each thread loads 16 bf16 (2 x uint4) for one half of one row.
+  //   Each thread loads 16 elements (2 x uint4) for one half of one row.
   //   OOB rows (row >= M) zero-fill via boundary check.
   //
   // B tile: BK x BN = 32 x 16, transposed to BT[16][40].
@@ -92,11 +96,11 @@ void gemm_wmma_skinny(
     {
       const int global_row = block_m + a_load_row;
       const int col_start = k_base + a_load_half * 16;
-      __hip_bfloat16 *a_dst =
+      ElemT *a_dst =
           smem_A + a_load_row * SMEM_STRIDE + a_load_half * 16;
 
       if (global_row < M && col_start + 16 <= K) {
-        const __hip_bfloat16 *a_src =
+        const ElemT *a_src =
             A + (int64_t)global_row * K + col_start;
         load_128(a_dst, a_src);
         load_128(a_dst + 8, a_src + 8);
@@ -105,7 +109,7 @@ void gemm_wmma_skinny(
         for (int c = 0; c < 16; c++) {
           int gc = col_start + c;
           a_dst[c] = (gc < K) ? A[(int64_t)global_row * K + gc]
-                               : __hip_bfloat16(0.0f);
+                               : ElemT(0.0f);
         }
       } else {
         zero_128(a_dst);
@@ -120,21 +124,21 @@ void gemm_wmma_skinny(
     {
       const int global_col = block_n + b_load_col;
       const int k_start = b_load_k_group * 2;
-      __hip_bfloat16 *bt_dst =
+      ElemT *bt_dst =
           smem_BT + b_load_col * SMEM_STRIDE + k_start;
 
       if (global_col < N) {
         int row0 = k_base + k_start;
         int row1 = row0 + 1;
-        __hip_bfloat16 v0 = (row0 < K)
+        ElemT v0 = (row0 < K)
             ? B[(int64_t)row0 * N + global_col]
-            : __hip_bfloat16(0.0f);
-        __hip_bfloat16 v1 = (row1 < K)
+            : ElemT(0.0f);
+        ElemT v1 = (row1 < K)
             ? B[(int64_t)row1 * N + global_col]
-            : __hip_bfloat16(0.0f);
+            : ElemT(0.0f);
         uint packed;
-        reinterpret_cast<__hip_bfloat16 *>(&packed)[0] = v0;
-        reinterpret_cast<__hip_bfloat16 *>(&packed)[1] = v1;
+        reinterpret_cast<ElemT *>(&packed)[0] = v0;
+        reinterpret_cast<ElemT *>(&packed)[1] = v1;
         *reinterpret_cast<uint *>(bt_dst) = packed;
       } else {
         *reinterpret_cast<uint *>(bt_dst) = 0;
@@ -148,16 +152,16 @@ void gemm_wmma_skinny(
     // -----------------------------------------------------------------------
     #pragma unroll
     for (int ki = 0; ki < BK; ki += WMMA_K) {
-      bf16x16 a_frag;
+      frag_t a_frag;
       int smem_row_a = warp_m * WM + frag_row;
-      const __hip_bfloat16 *a_ptr = smem_A + smem_row_a * SMEM_STRIDE + ki;
-      a_frag = *reinterpret_cast<const bf16x16 *>(a_ptr);
+      const ElemT *a_ptr = smem_A + smem_row_a * SMEM_STRIDE + ki;
+      a_frag = *reinterpret_cast<const frag_t *>(a_ptr);
 
-      bf16x16 b_frag;
-      const __hip_bfloat16 *b_ptr = smem_BT + frag_row * SMEM_STRIDE + ki;
-      b_frag = *reinterpret_cast<const bf16x16 *>(b_ptr);
+      frag_t b_frag;
+      const ElemT *b_ptr = smem_BT + frag_row * SMEM_STRIDE + ki;
+      b_frag = *reinterpret_cast<const frag_t *>(b_ptr);
 
-      acc = __builtin_amdgcn_wmma_f32_16x16x16_bf16_w32(a_frag, b_frag, acc);
+      acc = Traits::wmma(a_frag, b_frag, acc);
     }
 
     __syncthreads();
@@ -179,9 +183,17 @@ void gemm_wmma_skinny(
         int col = base_n + 2 * j + col_offset;
         if (col < N) {
           float val = alpha * acc[j];
-          C[(int64_t)base_m * N + col] = __hip_bfloat16(val);
+          C[(int64_t)base_m * N + col] = ElemT(val);
         }
       }
     }
   }
 }
+
+// Explicit instantiations.
+template __global__ void gemm_wmma_skinny<__hip_bfloat16>(
+    const __hip_bfloat16 *, const __hip_bfloat16 *, __hip_bfloat16 *,
+    int, int, int, float);
+template __global__ void gemm_wmma_skinny<_Float16>(
+    const _Float16 *, const _Float16 *, _Float16 *,
+    int, int, int, float);
