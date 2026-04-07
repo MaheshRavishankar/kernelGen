@@ -73,6 +73,10 @@ python gemm/profiling/analyze.py profile.json --arch gfx1100
 
 Agents execute inside a **bubblewrap (bwrap) sandbox** via `scripts/kernelgen-sandbox.sh`. The sandbox enforces filesystem isolation: the main checkout is read-only (except `.beads/` and `.git/worktrees/`), the bead worktree and build directories are read-write, and SDKs are read-only. Claude runs with `--dangerously-skip-permissions` inside the sandbox, so the filesystem restrictions ARE the permission model.
 
+The additive Codex counterpart lives at `scripts/kernelgen-codex-sandbox.sh`.
+Keep the Claude workflow working, but use `AGENTS.md` as the source of truth
+for Codex-specific workflow details.
+
 ### Available agents
 
 - **`gemm-kernel-writer`** (`.claude/agents/gemm-kernel-writer.md`) — Writes and optimizes native HIP GEMM kernels using WMMA intrinsics. Works in a profile-analyze-improve loop. Memory: `.claude/agent-memory/gemm-kernel-writer/`.

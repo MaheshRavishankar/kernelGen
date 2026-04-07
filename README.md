@@ -22,6 +22,31 @@ cmake --build ~/kernelGen/build/Release
 .venv/bin/python gemm/kernel_providers/hipblaslt/run.py --test-dir gemm/tests
 ```
 
+## Agent workflows
+
+Both Claude and Codex use the same bead-driven, worktree-per-task flow.
+Use `CLAUDE.md` for Claude-specific usage and `AGENTS.md` for Codex-specific
+usage.
+
+```bash
+# One-time sandbox setup on Ubuntu 24.04+
+sudo scripts/setup-bwrap-apparmor.sh
+
+# Create a worktree for the bead
+cd /home/mahesh/kernelGen/kernelGen
+git worktree add /home/mahesh/kernelGen/kernelGen-<bead-id> \
+  -b users/MaheshRavishankar/<bead-id>-<shortDescription>
+br update <bead-id> -s in_progress
+
+# Launch Claude in the sandbox
+scripts/kernelgen-sandbox.sh <bead-id> -- \
+  -p "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>."
+
+# Launch Codex in the sandbox
+scripts/kernelgen-codex-sandbox.sh <bead-id> -- \
+  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>."
+```
+
 ## License
 
 [MIT](LICENSE)
