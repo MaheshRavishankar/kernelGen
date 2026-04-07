@@ -10,6 +10,8 @@ attention, and convolutions.
   Codex source of truth.
 - For bead-driven implementation work, use one git worktree per bead. Do not
   implement directly on the main checkout.
+- Use camelCase for the descriptive branch suffix in worktree branches.
+  Prefer `users/<author>/<bead-id>-<shortDescription>`.
 - Record durable decisions in beads, git history, or repo docs. Do not rely on
   private session memory.
 
@@ -64,7 +66,7 @@ Use the same worktree-per-bead flow as the Claude setup:
 ```bash
 cd /home/mahesh/kernelGen/kernelGen
 git worktree add /home/mahesh/kernelGen/kernelGen-<bead-id> \
-  -b users/MaheshRavishankar/<bead-id>-<short-description>
+  -b users/MaheshRavishankar/<bead-id>-<shortDescription>
 br update <bead-id> -s in_progress
 ```
 
@@ -72,7 +74,7 @@ Launch Codex inside the external bwrap sandbox:
 
 ```bash
 scripts/kernelgen-codex-sandbox.sh <bead-id> -- \
-  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<short-description>."
+  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>."
 ```
 
 Resume the most recent Codex session for that worktree:
