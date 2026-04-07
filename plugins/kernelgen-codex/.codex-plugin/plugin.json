@@ -1,0 +1,25 @@
+{
+  "name": "kernelgen-codex",
+  "version": "0.1.0",
+  "description": "Repo-local Codex workflows for kernelGen development.",
+  "author": {
+    "name": "Mahesh Ravishankar"
+  },
+  "license": "MIT",
+  "keywords": ["kernelgen", "codex", "gemm", "rocm", "beads"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "kernelGen Codex",
+    "shortDescription": "Codex workflows for sandboxed kernelGen task execution.",
+    "longDescription": "Provides repo-local Codex skills for GEMM kernel writing and profiling, designed to run in the same bead and worktree flow as the existing Claude setup.",
+    "developerName": "Mahesh Ravishankar",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Shell"],
+    "defaultPrompt": [
+      "Implement the next ready kernelGen bead in a sandboxed worktree.",
+      "Optimize a native HIP GEMM kernel for gfx1100.",
+      "Profile a GEMM provider and report the top bottlenecks."
+    ],
+    "brandColor": "#B45309"
+  }
+}

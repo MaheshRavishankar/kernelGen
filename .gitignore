@@ -4,6 +4,7 @@ CMakeUserPresets.json
 # Python
 .venv/
 __pycache__/
+.codex
 
 # rocprofv3 temp files (dropped in cwd during profiling)
 .rocprofv3/
