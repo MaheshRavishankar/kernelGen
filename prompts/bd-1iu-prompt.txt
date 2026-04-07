@@ -1,0 +1,57 @@
+Implement bead bd-1iu: F16 WMMA support for native HIP GEMM.
+
+Worktree: /home/mahesh/kernelGen/kernelGen-bd-1iu
+Branch: users/MaheshRavishankar/bd-1iu-f16-support
+
+## Task
+
+Add F16 dtype support to the native HIP GEMM kernels. gfx1100 has a dedicated F16 WMMA intrinsic:
+
+```cpp
+// F16 input, F32 accumulation
+f32x8 __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(f16x16 a, f16x16 b, f32x8 c);
+```
+
+The fragment type for F16 is `half` (not `__hip_bfloat16`), and the vector type is:
+```cpp
+using f16x16 = _Float16 __attribute__((ext_vector_type(16)));
+```
+
+## What to change
+
+### 1. kernelgen_wmma_utils.h
+Add the f16x16 type alias alongside the existing bf16x16.
+
+### 2. Kernel files
+The simplest approach: template each kernel on the element type, or create F16 copies. Since the kernel logic is identical (only the data type and WMMA intrinsic differ), templating is the right call here.
+
+For each kernel file (gemm_wmma_128x128.hip, gemm_wmma_128x128_boundary.hip, gemm_wmma_skinny.hip):
+- Template on element type (bf16 vs f16)
+- Select the right WMMA intrinsic based on type
+- The shared memory layout, tile sizes, warp arrangement all stay the same
+- Instantiate both bf16 and f16 variants
+
+### 3. native_hip_gemm.hip (dispatch in run())
+Update run() to check dtype and dispatch to the correct template instantiation.
+
+### 4. kernelgen_gemm.hip (C dispatch API)
+Update kernelgen_gemm() to accept KERNELGEN_F16 dtype and dispatch accordingly.
+
+### 5. bench.cpp
+Should already work if the dispatch handles F16 — the bench reads dtype from config.json.
+
+## Target test
+- small_f16: M=1024, N=1024, K=1024, dtype=f16 — currently the only failing test (17th of 17)
+
+## Verification
+
+1. Configure: cmake -S . -B ~/kernelGen/build/bd-1iu -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=gfx1100
+2. Build: cmake --build ~/kernelGen/build/bd-1iu --target native_hip_gemm_bench
+3. Run ALL tests: python gemm/tests/run_all.py --provider native_hip --verify --build-dir ~/kernelGen/build/bd-1iu
+4. All 17 tests must pass (including small_f16)
+5. BF16 shapes must not regress
+
+Commit the changes when done.
+
+## Bead details
+Run `br show bd-1iu` for full description.

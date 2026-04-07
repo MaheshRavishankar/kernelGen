@@ -1,0 +1,76 @@
+Implement bead bd-2e5: Skinny-M GEMM kernels (16x128, 32x128 tiles).
+
+Worktree: /home/mahesh/kernelGen/kernelGen-bd-2e5
+Branch: users/MaheshRavishankar/bd-2e5-skinny-m-kernels
+
+## Task
+
+Add new kernel variants optimized for small-M shapes. The existing 128x128 boundary kernel gets 2.6-2.9% roofline efficiency on skinny shapes — essentially broken. hipblaslt gets 14-24% on the same shapes. We need to close this gap.
+
+## Target shapes and current performance
+
+- ai_low_skinny: M=16, N=512, K=1024 — native_hip: 0.38 TFLOPS (2.9% eff), hipblaslt: 1.83 TFLOPS (13.9% eff)
+- ai_low_small: M=32, N=576, K=2304 — native_hip: 0.67 TFLOPS (2.6% eff), hipblaslt: 6.29 TFLOPS (24.3% eff)
+- ai_very_low_tiny: M=4, N=384, K=5 — trivial, just needs to work
+
+## IMPORTANT: Profile-driven approach
+
+Do NOT just guess at a kernel design. Follow this process:
+
+### Step 1: Profile hipblaslt on the target shapes
+Use the profiler (spawn the gemm-profiler sub-agent or run profiling directly) to understand what hipblaslt does on these shapes:
+- What grid dimensions does it use? (number of blocks)
+- How many threads per block?
+- What's the occupancy?
+- Is it using split-K or some other parallelization strategy?
+
+```bash
+python gemm/profiling/profile.py --provider hipblaslt --test gemm/tests/ai_low_skinny -o /tmp/hipblaslt_skinny_profile.json
+python gemm/profiling/analyze.py /tmp/hipblaslt_skinny_profile.json --arch gfx1100
+
+python gemm/profiling/profile.py --provider hipblaslt --test gemm/tests/ai_low_small -o /tmp/hipblaslt_small_profile.json
+python gemm/profiling/analyze.py /tmp/hipblaslt_small_profile.json --arch gfx1100
+```
+
+### Step 2: Understand the bottleneck
+The fundamental problem with a naive skinny kernel is grid parallelism. For M=16, N=512, K=1024 with 128-wide N-tiles, you only get (1, 4) = 4 blocks on a 48-CU GPU. Consider:
+- Split-K: divide the K dimension across multiple blocks, then reduce
+- Smaller N-tiles: e.g., 16x64 gives (1, 8) = 8 blocks
+- Smaller BK: reduces LDS, increases occupancy
+- Whatever hipblaslt is doing — learn from the profiles
+
+### Step 3: Write kernels informed by profiling
+Based on what you learn, write kernels that address the actual bottlenecks. The key metric is roofline efficiency — we want to get from 2.9% to at least 10-15%.
+
+## File layout
+
+Following the refactoring from bd-36n, create separate files:
+- src/gemm_wmma_16x128.hip (or whatever tile size profiling suggests)
+- src/gemm_wmma_32x128.hip (or whatever tile size profiling suggests)
+- Both include kernelgen_wmma_utils.h for shared types/helpers
+- Each file has its own local tile/warp constants
+
+## Update dispatch in native_hip_gemm.hip
+
+Update run() to select kernel by M:
+- M <= 16: use skinny-16 kernel
+- M <= 32: use skinny-32 kernel
+- else: use existing 128x128 / 128x128_boundary
+
+## Update CMakeLists.txt
+
+Add the new .hip source files.
+
+## Verification
+
+1. Configure: cmake -S . -B ~/kernelGen/build/bd-2e5 -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=gfx1100
+2. Build: cmake --build ~/kernelGen/build/bd-2e5 --target native_hip_gemm_bench
+3. Run all tests: python gemm/tests/run_all.py --provider native_hip --verify --build-dir ~/kernelGen/build/bd-2e5
+4. All 16 BF16 tests must pass correctness
+5. Profile the skinny kernels and compare roofline efficiency to hipblaslt
+6. Existing aligned shapes must not regress
+
+Commit the changes when done.
+
+## Bead details
+Run `br show bd-2e5` for full description.

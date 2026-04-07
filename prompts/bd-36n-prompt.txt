@@ -1,0 +1,64 @@
+Implement bead bd-36n: Refactor native_hip kernels into separate files with shared header.
+
+Worktree: /home/mahesh/kernelGen/kernelGen-bd-36n
+Branch: users/MaheshRavishankar/bd-36n-split-kernel-files
+
+## Task
+
+Split the monolithic native_hip_gemm.hip into separate files per kernel, with shared __device__ utilities in a header. This is a pure refactoring — no functional changes.
+
+## Target layout
+
+```
+gemm/kernel_providers/native_hip/
+  include/
+    native_hip_gemm.h            # Existing: GemmConfig, GemmResult, run() declaration
+    kernelgen_wmma_utils.h        # NEW: shared types, constants, __device__ helpers
+  src/
+    gemm_wmma_128x128.hip         # NEW: aligned kernel only (gemm_wmma_128x128)
+    gemm_wmma_128x128_boundary.hip # NEW: boundary kernel only (gemm_wmma_128x128_boundary)
+    native_hip_gemm.hip           # MODIFIED: host run() dispatch only, no kernel code
+    bench.cpp                     # Unchanged
+  CMakeLists.txt                  # MODIFIED: add new .hip sources
+```
+
+## What goes in kernelgen_wmma_utils.h
+
+Move these from native_hip_gemm.hip into the shared header:
+- Type aliases: bf16x16, f32x8
+- __device__ helpers: load_128, zero_128
+- WMMA hardware constants only: WMMA_M, WMMA_N, WMMA_K (these are fixed by ISA)
+- Use #pragma once, proper include guards
+
+Do NOT put tile/warp configuration constants (BM, BN, BK, SMEM_STRIDE, SMEM_PAD, BLOCK_SIZE, WARP_SIZE, WARPS_M, WARPS_N, WM, WN, WARP_TILES_M, WARP_TILES_N) in the shared header. These belong in each kernel file — they may differ between kernel variants and should be defined locally even if currently duplicated.
+
+## What goes in each kernel file
+
+- gemm_wmma_128x128.hip: includes kernelgen_wmma_utils.h, contains only the gemm_wmma_128x128 __global__ function
+- gemm_wmma_128x128_boundary.hip: includes kernelgen_wmma_utils.h, contains only the gemm_wmma_128x128_boundary __global__ function
+- Each kernel file should declare its kernel function in a way that native_hip_gemm.hip can call it (forward declarations or a small header)
+
+## What stays in native_hip_gemm.hip
+
+- #include of kernel headers
+- The run() function with dispatch logic
+- ceil_div helper
+
+## Key constraints
+
+- Pure refactoring: the built binary must produce IDENTICAL results
+- All 16 BF16 tests must still pass
+- The aligned kernel ISA must be unchanged (same VGPR count)
+- Update CMakeLists.txt to compile the new .hip files
+
+## Verification
+
+1. Build: cmake --build ~/kernelGen/build/bd-36n --target native_hip_gemm_bench
+   (you'll need to configure first: cmake -S . -B ~/kernelGen/build/bd-36n -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=gfx1100)
+2. Run: python gemm/tests/run_all.py --provider native_hip --verify --build-dir ~/kernelGen/build/bd-36n
+3. All 16 BF16 tests must pass, same TFLOPS as before
+
+Commit the changes when done.
+
+## Bead details
+Run `br show bd-36n` for full description.

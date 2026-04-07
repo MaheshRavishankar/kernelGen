@@ -73,17 +73,57 @@ python gemm/profiling/analyze.py profile.json --arch gfx1100
 
 Agents execute inside a **bubblewrap (bwrap) sandbox** via `scripts/kernelgen-sandbox.sh`. The sandbox enforces filesystem isolation: the main checkout is read-only (except `.beads/` and `.git/worktrees/`), the bead worktree and build directories are read-write, and SDKs are read-only. Claude runs with `--dangerously-skip-permissions` inside the sandbox, so the filesystem restrictions ARE the permission model.
 
-```bash
-# Launch a sandboxed agent for a bead
-scripts/kernelgen-sandbox.sh <bead-id> -- -p "Your task prompt here"
+### Available agents
 
-# One-time AppArmor setup (Ubuntu 24.04+)
-sudo scripts/setup-bwrap-apparmor.sh
+- **`gemm-kernel-writer`** (`.claude/agents/gemm-kernel-writer.md`) — Writes and optimizes native HIP GEMM kernels using WMMA intrinsics. Works in a profile-analyze-improve loop. Memory: `.claude/agent-memory/gemm-kernel-writer/`.
+- **`gemm-profiler`** (`.claude/agents/gemm-profiler.md`) — Profiles GEMM kernels and analyzes bottlenecks using rocprofv3. Memory: `.claude/agent-memory/gemm-profiler/`.
+
+### Launching an agent on a bead
+
+```bash
+# 1. Create a git worktree for the bead (from main checkout)
+cd /home/mahesh/kernelGen/kernelGen
+git worktree add /home/mahesh/kernelGen/kernelGen-<bead-id> \
+  -b users/MaheshRavishankar/<bead-id>-<short-description>
+
+# 2. Mark bead as in-progress
+br update <bead-id> -s in_progress
+
+# 3. Launch the sandboxed agent
+scripts/kernelgen-sandbox.sh <bead-id> -- \
+  --agent <agent-name> \
+  -p "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<short-description>."
+
+# Resume a previous session
+scripts/kernelgen-sandbox.sh <bead-id> -- --resume
 ```
 
-The `gemm-profiler` agent (`.claude/agents/gemm-profiler.md`) profiles GEMM kernels and analyzes bottlenecks using rocprofv3. It has persistent memory in `.claude/agent-memory/gemm-profiler/` where it stores learned patterns about counter interpretation and tool quirks.
+**The prompt must tell the agent:** the bead ID, worktree path, branch name, and what to do. The agent reads the bead description from `br show <bead-id>` but needs the worktree/branch paths since it can't discover them.
 
-The `gemm-kernel-writer` agent (`.claude/agents/gemm-kernel-writer.md`) writes and optimizes native HIP GEMM kernels using WMMA intrinsics. It works in a profile-analyze-improve loop with the profiler agent and stores optimization findings in `.claude/agent-memory/gemm-kernel-writer/`.
+### After the agent finishes
+
+```bash
+# 1. Review changes
+cd /home/mahesh/kernelGen/kernelGen
+git diff main...users/MaheshRavishankar/<bead-id>-<short-description>
+
+# 2. Merge into main
+git merge users/MaheshRavishankar/<bead-id>-<short-description>
+
+# 3. Close the bead
+br close <bead-id> -r "Brief summary of what was accomplished"
+
+# 4. Clean up worktree and branch
+git worktree remove /home/mahesh/kernelGen/kernelGen-<bead-id>
+git branch -d users/MaheshRavishankar/<bead-id>-<short-description>
+```
+
+### One-time setup
+
+```bash
+# AppArmor setup for bwrap (Ubuntu 24.04+)
+sudo scripts/setup-bwrap-apparmor.sh
+```
 
 ## Test format
 

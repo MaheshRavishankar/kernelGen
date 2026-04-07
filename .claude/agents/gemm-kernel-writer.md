@@ -60,7 +60,14 @@ python gemm/kernel_providers/hipblaslt/run.py --test gemm/tests/ai_very_high_squ
 
 ### 4. Profile and Analyze
 
-Use the gemm-profiler agent or run profiling directly:
+**Preferred: spawn the gemm-profiler sub-agent** using the Agent tool. It has deep knowledge of rocprofv3 counter interpretation, bottleneck analysis, and gfx1100 quirks. Ask it to profile a specific provider/test and report back with bottlenecks and recommendations.
+
+Example Agent tool usage:
+
+- prompt: "Profile native_hip on gemm/tests/ai_very_high_square. Report TFLOPS, % of peak, top bottleneck, and whether there's a regression vs ~80 TFLOPS baseline."
+- subagent_type: use the gemm-profiler agent at `.claude/agents/gemm-profiler.md`
+
+**Fallback: run profiling directly** (for quick checks or when you just need TFLOPS numbers):
 
 ```bash
 # Profile

@@ -1,0 +1,108 @@
+Implement bead bd-397: BLAS-like dispatch API for native HIP GEMM.
+
+Worktree: /home/mahesh/kernelGen/kernelGen-bd-397
+Branch: users/MaheshRavishankar/bd-397-dispatch-api
+
+## Task
+
+Create a public C API that wraps all our native HIP GEMM kernels behind a single dispatch entry point. Users call one function, and the library selects the best kernel based on the problem shape.
+
+## API design
+
+Create `gemm/kernel_providers/native_hip/include/kernelgen_gemm.h`:
+
+```c
+#ifndef KERNELGEN_GEMM_H
+#define KERNELGEN_GEMM_H
+
+#include <hip/hip_runtime.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+    KERNELGEN_BF16 = 0,
+    KERNELGEN_F16 = 1,
+    KERNELGEN_F32 = 2,
+} kernelgen_dtype_t;
+
+typedef enum {
+    KERNELGEN_SUCCESS = 0,
+    KERNELGEN_ERROR_UNSUPPORTED_DTYPE = 1,
+    KERNELGEN_ERROR_UNSUPPORTED_LAYOUT = 2,
+    KERNELGEN_ERROR_INVALID_DIMENSIONS = 3,
+    KERNELGEN_ERROR_LAUNCH_FAILED = 4,
+} kernelgen_status_t;
+
+typedef struct {
+    int64_t M, N, K;
+    int transA, transB;        // 0=no, 1=yes
+    float alpha, beta;
+    kernelgen_dtype_t dtype_A, dtype_B, dtype_C;
+    kernelgen_dtype_t compute_type;
+} kernelgen_gemm_config_t;
+
+// Launch a GEMM on the given stream. Stateless — no handle needed.
+kernelgen_status_t kernelgen_gemm(
+    const kernelgen_gemm_config_t *config,
+    const void *A,    // device pointer
+    const void *B,    // device pointer
+    void *C,          // device pointer
+    hipStream_t stream);
+
+// Query whether a config is supported without launching.
+kernelgen_status_t kernelgen_gemm_supported(
+    const kernelgen_gemm_config_t *config);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // KERNELGEN_GEMM_H
+```
+
+## Implementation
+
+Create `gemm/kernel_providers/native_hip/src/kernelgen_gemm.hip`:
+
+The dispatch logic:
+1. Validate: dtype must be BF16, layout must be NN (transA=0, transB=0), beta=0
+2. Select kernel:
+   - M <= 32: skinny kernel (gemm_wmma_skinny)
+   - M%128==0 && N%128==0 && K%32==0: aligned 128x128 (gemm_wmma_128x128)
+   - Otherwise: boundary 128x128 (gemm_wmma_128x128_boundary)
+3. Compute grid dims (ceil_div for boundary/skinny, exact for aligned)
+4. Launch on the given stream
+
+This is a thin wrapper — no timing, no warmup, no allocation. Just validate, select kernel, launch.
+
+## Update bench.cpp
+
+Add a `--use-dispatch` flag that benchmarks through the dispatch API instead of calling run() directly. This validates that the API produces identical results.
+
+## Update CMakeLists.txt
+
+- Add kernelgen_gemm.hip to the library sources
+- Make sure kernelgen_gemm.h is in the include path
+
+## Key constraints
+
+- Pure C API (not C++) for maximum interop
+- Stateless — no handle, no context, no workspace allocation
+- The dispatch function itself must not allocate memory or create streams
+- Error codes, not exceptions
+- The kernel launch is async (returns after launch, before completion)
+
+## Verification
+
+1. Configure: cmake -S . -B ~/kernelGen/build/bd-397 -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=gfx1100
+2. Build: cmake --build ~/kernelGen/build/bd-397 --target native_hip_gemm_bench
+3. Run with dispatch: python gemm/tests/run_all.py --provider native_hip --verify --build-dir ~/kernelGen/build/bd-397
+4. All 16 BF16 tests must pass with identical TFLOPS to direct kernel launch
+
+Commit the changes when done.
+
+## Bead details
+Run `br show bd-397` for full description.
