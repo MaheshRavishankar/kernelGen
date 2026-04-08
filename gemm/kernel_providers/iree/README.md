@@ -5,7 +5,7 @@ Benchmarks GEMM kernels compiled by [IREE](https://iree.dev) targeting AMD HIP/R
 ## How it works
 
 1. `run.py` generates MLIR (`linalg.matmul`) from the test config
-1. `iree-compile` compiles the MLIR to a `.vmfb` module (cached in `~/.cache/kernelgen/`)
+1. `iree-compile` compiles the MLIR to a `.vmfb` module (cached in `~/.cache/kernelgen/vmfb/iree/<gpu_target>/`)
 1. `iree_gemm_bench` loads the `.vmfb` via the IREE runtime C API and dispatches on a custom HIP stream
 1. Kernel time is measured with HIP events — identical methodology to hipBLASLt
 

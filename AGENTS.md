@@ -27,9 +27,11 @@ cmake --build ~/kernelGen/build/Release
 
 ```bash
 python gemm/tests/run_all.py --provider hipblaslt --verify -o results.json
+python gemm/tests/run_all.py --provider fusilli --verify -o results.json
 python gemm/tests/run_all.py --provider iree --verify -o results.json
 
 python gemm/kernel_providers/hipblaslt/run.py --test gemm/tests/ai_high_medium --verify
+python gemm/kernel_providers/fusilli/run.py --test gemm/tests/ai_high_medium --verify
 python gemm/kernel_providers/iree/run.py --test gemm/tests/ai_high_medium --verify
 python gemm/kernel_providers/native_hip/run.py --test gemm/tests/ai_very_high_square
 
@@ -73,9 +75,9 @@ br update <bead-id> -s in_progress
 Launch Codex inside the external bwrap sandbox:
 
 ```bash
-scripts/kernelgen-codex-sandbox.sh <bead-id> -- \
+scripts/kernelgen-codex-sandbox.sh <bead-id> --timeout 2h -- \
   -m alpine-alpha \
-  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>. When complete, send a short final completion message and exit."
+  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>. Commit validated changes on that branch before exiting; if blocked, summarize the blocker clearly. When complete, send a short final completion message and exit."
 ```
 
 Resume the most recent Codex session for that worktree:
@@ -90,11 +92,18 @@ The prompt should explicitly include:
 - worktree path
 - branch name
 - the concrete task to perform
+- an instruction to commit validated changes on the bead branch before exiting,
+  or to report the blocker clearly if it cannot do so
 - an instruction to send a short final completion message before exiting so the
   sandbox wrapper can terminate cleanly
 
 For implementation tasks, prefer a deepthink model such as `alpine-alpha`
 instead of the default model.
+
+Use an explicit timeout for each Codex run. `scripts/kernelgen-codex-sandbox.sh`
+defaults to `--timeout 2h`, supports overriding with `--timeout <duration>`,
+and reports timeout with exit code `124` so the launcher can tell the difference
+between timeout and task failure.
 
 ## Repo-Local Codex Workflows
 
@@ -121,5 +130,6 @@ rocprof-based bottleneck analysis.
 - GPU target defaults to `gfx1100`, override with `-DGPU_TARGETS=<target>`.
 - IREE source defaults to `~/kernelGen/iree/iree/`, override with
   `-DIREE_SOURCE_DIR=<path>`.
-- IREE `.vmfb` files are cached in `~/.cache/kernelgen/vmfb/<gpu_target>/`.
+- IREE/Fusilli `.vmfb` files are cached in
+  `~/.cache/kernelgen/vmfb/<provider>/<gpu_target>/`.
 - All providers use HIP events on a HIP stream for timing.

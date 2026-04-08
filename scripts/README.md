@@ -9,7 +9,8 @@ One-off helper scripts for generating test data, selecting shapes, and other tas
   worktree, build directories, `.beads/`, and the shared caches Claude needs.
 - `kernelgen-codex-sandbox.sh` — Bubblewrap launcher for Codex bead workflows.
   Mirrors the Claude sandbox model while mounting Codex state and config
-  directories instead of Claude's.
+  directories instead of Claude's. Supports `--timeout <duration>` and reports
+  timeout with exit code `124`.
 - `setup-bwrap-apparmor.sh` — One-time AppArmor setup needed on Ubuntu 24.04+
   so `bwrap` can create user namespaces.
 

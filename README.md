@@ -43,9 +43,9 @@ scripts/kernelgen-sandbox.sh <bead-id> -- \
   -p "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>."
 
 # Launch Codex in the sandbox
-scripts/kernelgen-codex-sandbox.sh <bead-id> -- \
+scripts/kernelgen-codex-sandbox.sh <bead-id>  --timeout 2h -- \
   -m alpine-alpha \
-  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>. When complete, send a short final completion message and exit."
+  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>. Commit validated changes on that branch before exiting; if blocked, summarize the blocker clearly. When complete, send a short final completion message and exit."
 ```
 
 ## License

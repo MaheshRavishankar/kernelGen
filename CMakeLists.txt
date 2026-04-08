@@ -42,6 +42,7 @@ option(KERNELGEN_ENABLE_GEMM "Enable GEMM operation" ON)
 # Provider toggles (each operation guards its own providers too)
 # =============================================================================
 option(KERNELGEN_ENABLE_HIPBLASLT "Enable hipBLAS-LT kernel provider" ON)
+option(KERNELGEN_ENABLE_FUSILLI "Enable Fusilli kernel provider" ON)
 option(KERNELGEN_ENABLE_IREE "Enable IREE kernel provider" ON)
 option(KERNELGEN_ENABLE_NATIVE_HIP "Enable native HIP kernel provider" ON)
 

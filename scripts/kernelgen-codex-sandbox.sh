@@ -15,19 +15,30 @@
 #   sudo ./setup-bwrap-apparmor.sh
 #
 # Usage:
-#   kernelgen-codex-sandbox <bead-id> [-- codex-args...]
+#   kernelgen-codex-sandbox <bead-id> [--timeout <duration>] [-- codex-args...]
 #
 # Examples:
-#   kernelgen-codex-sandbox bd-ffh -- "Implement bd-ffh"
-#   kernelgen-codex-sandbox bd-k85 -- resume --last
+#   kernelgen-codex-sandbox bd-ffh --timeout 2h -- "Implement bd-ffh"
+#   kernelgen-codex-sandbox bd-k85 --timeout 90m -- resume --last
 
 set -euo pipefail
 
 BEAD_ID=""
+TIMEOUT_DURATION="${KERNELGEN_CODEX_TIMEOUT:-2h}"
 CODEX_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --timeout)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: --timeout requires a duration argument." >&2
+        echo "Usage: kernelgen-codex-sandbox <bead-id> [--timeout <duration>] [-- codex-args...]" >&2
+        exit 1
+      fi
+      TIMEOUT_DURATION="$1"
+      shift
+      ;;
     --)
       shift
       CODEX_ARGS=("$@")
@@ -38,7 +49,7 @@ while [[ $# -gt 0 ]]; do
         BEAD_ID="$1"
       else
         echo "Error: unexpected argument '$1'" >&2
-        echo "Usage: kernelgen-codex-sandbox <bead-id> [-- codex-args...]" >&2
+        echo "Usage: kernelgen-codex-sandbox <bead-id> [--timeout <duration>] [-- codex-args...]" >&2
         exit 1
       fi
       shift
@@ -48,8 +59,12 @@ done
 
 if [[ -z "$BEAD_ID" ]]; then
   echo "Error: bead-id is required." >&2
-  echo "Usage: kernelgen-codex-sandbox <bead-id> [-- codex-args...]" >&2
+  echo "Usage: kernelgen-codex-sandbox <bead-id> [--timeout <duration>] [-- codex-args...]" >&2
   exit 1
+fi
+
+if [[ "$TIMEOUT_DURATION" == "0" || "$TIMEOUT_DURATION" == "off" ]]; then
+  TIMEOUT_DURATION=""
 fi
 
 MAIN_CHECKOUT="/home/mahesh/kernelGen/kernelGen"
@@ -114,49 +129,65 @@ echo "Sandboxed codex for bead ${BEAD_ID}"
 echo "  Main checkout: ${MAIN_CHECKOUT} (read-only)"
 echo "  Worktree:      ${WORKTREE} (read-write)"
 echo "  Build dir:     ${BUILD_BASE} (read-write)"
+if [[ -n "$TIMEOUT_DURATION" ]]; then
+  echo "  Timeout:       ${TIMEOUT_DURATION}"
+else
+  echo "  Timeout:       disabled"
+fi
 
-exec /usr/bin/bwrap \
-  --ro-bind /usr /usr \
-  --symlink usr/bin /bin \
-  --symlink usr/lib /lib \
-  --symlink usr/lib64 /lib64 \
-  --ro-bind /etc /etc \
-  --ro-bind /opt /opt \
-  --proc /proc \
-  --ro-bind /sys /sys \
-  --dev /dev \
-  --dev-bind-try /dev/dri /dev/dri \
-  --dev-bind-try /dev/kfd /dev/kfd \
-  --bind /tmp /tmp \
-  --ro-bind /run/systemd/resolve /run/systemd/resolve \
-  \
-  --tmpfs "$HOME" \
-  --ro-bind "$HOME/.bashrc" "$HOME/.bashrc" \
-  --ro-bind "$HOME/.gitconfig" "$HOME/.gitconfig" \
-  --ro-bind "$HOME/.ssh" "$HOME/.ssh" \
-  --ro-bind "$HOME/.local" "$HOME/.local" \
-  --ro-bind "$HOME/.nvm" "$HOME/.nvm" \
-  \
-  --bind "$HOME/.codex" "$HOME/.codex" \
-  --bind-try "$HOME/.config/codex" "$HOME/.config/codex" \
-  --bind "$HOME/.config/gh" "$HOME/.config/gh" \
-  --bind "$HOME/.cache" "$HOME/.cache" \
-  \
-  --ro-bind "$MAIN_CHECKOUT" "$MAIN_CHECKOUT" \
-  --bind "$MAIN_CHECKOUT/.beads" "$MAIN_CHECKOUT/.beads" \
-  --bind "$MAIN_CHECKOUT/.git" "$MAIN_CHECKOUT/.git" \
-  \
-  "${EXTRA_BINDS[@]}" \
-  \
-  --setenv HOME "$HOME" \
-  --setenv THEROCK_PATH "$THEROCK" \
-  --setenv IREE_SOURCE_DIR "$IREE_SRC" \
-  --setenv PATH "${VENV}/bin:$HOME/.local/bin:${NVM_NODE_DIR}/bin:/usr/local/bin:/usr/bin:/bin" \
-  --setenv OPENAI_API_KEY "${OPENAI_API_KEY:-}" \
-  --unsetenv VSCODE_GIT_ASKPASS_MAIN \
-  --unsetenv VSCODE_GIT_ASKPASS_NODE \
-  \
-  --chdir "$MAIN_CHECKOUT" \
-  --die-with-parent \
-  -- \
+BWRAP_CMD=(
+  /usr/bin/bwrap
+  --ro-bind /usr /usr
+  --symlink usr/bin /bin
+  --symlink usr/lib /lib
+  --symlink usr/lib64 /lib64
+  --ro-bind /etc /etc
+  --ro-bind /opt /opt
+  --proc /proc
+  --ro-bind /sys /sys
+  --dev /dev
+  --dev-bind-try /dev/dri /dev/dri
+  --dev-bind-try /dev/kfd /dev/kfd
+  --bind /tmp /tmp
+  --ro-bind /run/systemd/resolve /run/systemd/resolve
+  --tmpfs "$HOME"
+  --ro-bind "$HOME/.bashrc" "$HOME/.bashrc"
+  --ro-bind "$HOME/.gitconfig" "$HOME/.gitconfig"
+  --ro-bind "$HOME/.ssh" "$HOME/.ssh"
+  --ro-bind "$HOME/.local" "$HOME/.local"
+  --ro-bind "$HOME/.nvm" "$HOME/.nvm"
+  --bind "$HOME/.codex" "$HOME/.codex"
+  --bind-try "$HOME/.config/codex" "$HOME/.config/codex"
+  --bind "$HOME/.config/gh" "$HOME/.config/gh"
+  --bind "$HOME/.cache" "$HOME/.cache"
+  --ro-bind "$MAIN_CHECKOUT" "$MAIN_CHECKOUT"
+  --bind "$MAIN_CHECKOUT/.beads" "$MAIN_CHECKOUT/.beads"
+  --bind "$MAIN_CHECKOUT/.git" "$MAIN_CHECKOUT/.git"
+  "${EXTRA_BINDS[@]}"
+  --setenv HOME "$HOME"
+  --setenv THEROCK_PATH "$THEROCK"
+  --setenv IREE_SOURCE_DIR "$IREE_SRC"
+  --setenv PATH "${VENV}/bin:$HOME/.local/bin:${NVM_NODE_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
+  --setenv OPENAI_API_KEY "${OPENAI_API_KEY:-}"
+  --unsetenv VSCODE_GIT_ASKPASS_MAIN
+  --unsetenv VSCODE_GIT_ASKPASS_NODE
+  --chdir "$MAIN_CHECKOUT"
+  --die-with-parent
+  --
   "$CODEX_BIN" --dangerously-bypass-approvals-and-sandbox "${CODEX_ARGS[@]}"
+)
+
+if [[ -n "$TIMEOUT_DURATION" ]]; then
+  set +e
+  /usr/bin/timeout --foreground --signal=TERM --kill-after=30s \
+    "$TIMEOUT_DURATION" "${BWRAP_CMD[@]}"
+  STATUS=$?
+  set -e
+  if [[ $STATUS -eq 124 ]]; then
+    echo "ERROR: Codex timed out after ${TIMEOUT_DURATION} for bead ${BEAD_ID}." >&2
+    echo "Review ${WORKTREE} and either resume the session or finalize the branch manually." >&2
+  fi
+  exit $STATUS
+fi
+
+exec "${BWRAP_CMD[@]}"
