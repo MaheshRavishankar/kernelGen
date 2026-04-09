@@ -94,8 +94,16 @@ The prompt should explicitly include:
 - the concrete task to perform
 - an instruction to commit validated changes on the bead branch before exiting,
   or to report the blocker clearly if it cannot do so
+
+When a bead implementation is complete and a PR is opened, the completion
+handoff should include the PR number so it can be recorded back into `br`.
+
 - an instruction to send a short final completion message before exiting so the
   sandbox wrapper can terminate cleanly
+
+When agents create commits, the commit message should describe the actual code
+or doc change being made. Avoid vague summaries that only restate the bead ID
+or workflow step.
 
 For implementation tasks, prefer a deepthink model such as `alpine-alpha`
 instead of the default model.
@@ -115,9 +123,12 @@ Available skills:
 
 - `gemm-kernel-writer`
 - `gemm-profiler`
+- `pm`
 
 Use them when the task is clearly about native HIP GEMM kernel iteration or
 rocprof-based bottleneck analysis.
+Use `pm` for bead/PR sweeps that should launch sandboxed agents for ready
+implementation work, PR feedback follow-up, or closed-PR cleanup.
 
 ## Key Conventions
 
