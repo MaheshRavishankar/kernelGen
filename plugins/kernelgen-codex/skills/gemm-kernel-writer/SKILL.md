@@ -11,6 +11,9 @@ Always read [AGENTS.md](../../../../AGENTS.md) and the relevant test
 configuration before editing code.
 
 Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
+For sandboxed implementation runs, prefer a deepthink model such as
+`alpine-alpha` and instruct the agent to send a short final completion message
+before exit.
 
 ## Scope
 

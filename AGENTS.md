@@ -74,7 +74,8 @@ Launch Codex inside the external bwrap sandbox:
 
 ```bash
 scripts/kernelgen-codex-sandbox.sh <bead-id> -- \
-  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>."
+  -m alpine-alpha \
+  "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>. When complete, send a short final completion message and exit."
 ```
 
 Resume the most recent Codex session for that worktree:
@@ -89,6 +90,11 @@ The prompt should explicitly include:
 - worktree path
 - branch name
 - the concrete task to perform
+- an instruction to send a short final completion message before exiting so the
+  sandbox wrapper can terminate cleanly
+
+For implementation tasks, prefer a deepthink model such as `alpine-alpha`
+instead of the default model.
 
 ## Repo-Local Codex Workflows
 

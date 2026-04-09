@@ -11,6 +11,8 @@ Always read [AGENTS.md](../../../../AGENTS.md) and the relevant profile inputs
 before drawing conclusions.
 
 Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
+For sandboxed Codex runs, instruct the agent to send a short final completion
+message before exit so the wrapper does not linger after the work is done.
 
 ## Scope
 
