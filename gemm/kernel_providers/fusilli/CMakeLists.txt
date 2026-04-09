@@ -1,21 +1,36 @@
 # Fusilli GEMM kernel provider.
 #
-# Fusilli is represented as a first-class provider but currently benchmarks via
-# the same IREE runtime path so results can be compared and tracked separately.
+# Uses the Fusilli C++ graph frontend to build and JIT-compile GEMM graphs
+# against the shared IREE runtime/tooling stack used elsewhere in kernelGen.
 
 include(KernelGenIreeRuntime)
 
 kernelgen_configure_iree_runtime()
 
-add_executable(fusilli_gemm_bench
-               ${CMAKE_CURRENT_SOURCE_DIR}/../iree/src/bench.cpp)
+set(FUSILLI_SOURCE_DIR
+    "$ENV{HOME}/iree/fusilli"
+    CACHE PATH "Path to the Fusilli source tree")
+
+if(NOT EXISTS "${FUSILLI_SOURCE_DIR}/include/fusilli.h")
+  message(FATAL_ERROR "Fusilli source not found at ${FUSILLI_SOURCE_DIR}.\n"
+                      "Set -DFUSILLI_SOURCE_DIR=<path> to a Fusilli checkout.")
+endif()
+
+message(STATUS "Fusilli source: ${FUSILLI_SOURCE_DIR}")
+
+add_executable(fusilli_gemm_bench src/bench.cpp)
+set_target_properties(fusilli_gemm_bench PROPERTIES CXX_STANDARD 20
+                                                    CXX_STANDARD_REQUIRED YES)
 
 target_include_directories(
-  fusilli_gemm_bench BEFORE PRIVATE ${HIP_INCLUDE_DIRS}
-                                    ${IREE_SOURCE_DIR}/runtime/src)
+  fusilli_gemm_bench BEFORE
+  PRIVATE ${HIP_INCLUDE_DIRS} ${IREE_SOURCE_DIR}/runtime/src
+          ${FUSILLI_SOURCE_DIR}/include)
+
+target_compile_definitions(fusilli_gemm_bench PRIVATE FUSILLI_ENABLE_AMDGPU)
 
 target_link_libraries(
   fusilli_gemm_bench PRIVATE iree_runtime_unified hip::amdhip64
                              kernelgen_gemm_hip_utils)
 
-# Host-only benchmark launcher; IREE emits and dispatches the GPU kernels.
+# Host-side benchmark launcher; Fusilli emits and dispatches the GPU kernels.

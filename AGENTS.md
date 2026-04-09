@@ -128,8 +128,12 @@ rocprof-based bottleneck analysis.
 - TheRock path defaults to `~/kernelGen/TheRock`, override with
   `-DTHEROCK_PATH=<path>`.
 - GPU target defaults to `gfx1100`, override with `-DGPU_TARGETS=<target>`.
+- Fusilli source defaults to `~/iree/fusilli`, override with
+  `-DFUSILLI_SOURCE_DIR=<path>`.
 - IREE source defaults to `~/kernelGen/iree/iree/`, override with
   `-DIREE_SOURCE_DIR=<path>`.
-- IREE/Fusilli `.vmfb` files are cached in
-  `~/.cache/kernelgen/vmfb/<provider>/<gpu_target>/`.
+- IREE `.vmfb` files are cached in
+  `~/.cache/kernelgen/vmfb/iree/<gpu_target>/`.
+- Fusilli compile artifacts default to
+  `${KERNELGEN_CACHE_DIR:-~/.cache/kernelgen}/fusilli/`.
 - All providers use HIP events on a HIP stream for timing.

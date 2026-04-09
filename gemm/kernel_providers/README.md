@@ -29,7 +29,7 @@ Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
 ## Current providers
 
 - **hipblaslt** — AMD hipBLAS-LT library. Uses `hipblasLtMatmul` with algorithm heuristics.
-- **fusilli** — Fusilli provider facade over the shared IREE VMFB/runtime path, with a dedicated benchmark target and VMFB cache namespace for apples-to-apples comparisons against IREE.
+- **fusilli** — Fusilli C++ graph frontend. Builds and compiles GEMM graphs in-process, then dispatches them through the shared IREE runtime on a HIP stream.
 - **iree** — IREE compiler. Compiles `linalg.matmul` MLIR to GPU kernels, dispatches via IREE runtime with external HIP stream.
 
 ## Adding a new provider
@@ -40,6 +40,7 @@ Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
 
 ## Shared IREE runtime
 
-Providers that execute IREE VMFB modules (`iree`, `fusilli`) should include
-`KernelGenIreeRuntime` and call `kernelgen_configure_iree_runtime()` so the IREE
-runtime is configured once even when both providers are enabled.
+Providers that execute through the IREE runtime (`iree`, `fusilli`) should
+include `KernelGenIreeRuntime` and call
+`kernelgen_configure_iree_runtime()` so the IREE runtime is configured once
+even when both providers are enabled.
