@@ -1,7 +1,6 @@
----
-name: gemm-profiler
-description: Profile and analyze GEMM kernel performance with rocprofv3 and roofline-style bottleneck analysis.
----
+______________________________________________________________________
+
+## name: gemm-profiler description: Profile and analyze GEMM kernel performance with rocprofv3 and roofline-style bottleneck analysis.
 
 # GEMM Profiler
 
@@ -10,6 +9,8 @@ results, or explain why a kernel is underperforming.
 
 Always read [AGENTS.md](../../../../AGENTS.md) and the relevant profile inputs
 before drawing conclusions.
+
+Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
 
 ## Scope
 
@@ -20,22 +21,22 @@ before drawing conclusions.
 ## Workflow
 
 1. Collect a profile
-   - `python gemm/profiling/profile.py --provider <provider> --test <test_dir> -o /tmp/profile.json`
+   - `.venv/bin/python gemm/profiling/profile.py --provider <provider> --test <test_dir> -o /tmp/profile.json`
    - Use `--skip-pmc` for quick trace-only checks
-2. Analyze it
-   - `python gemm/profiling/analyze.py /tmp/profile.json --arch gfx1100`
-3. Clean temporary rocprof artifacts
+1. Analyze it
+   - `.venv/bin/python gemm/profiling/analyze.py /tmp/profile.json --arch gfx1100`
+1. Clean temporary rocprof artifacts
    - `rm -rf .rocprofv3/ *.co`
-4. For deep dives, use `rocprofv3` directly when needed
+1. For deep dives, use `rocprofv3` directly when needed
 
 ## Bottleneck Heuristics
 
 1. Low compute efficiency: inspect instruction mix and occupancy
-2. `MemUnitBusy > 80%`: likely memory-bound
-3. Low occupancy: inspect VGPR and LDS usage
-4. High `LDSBankConflict`: shared memory access issue
-5. High `ALUStalledByLDS`: pipeline or LDS pressure issue
-6. High `SQ_WAIT_ANY`: latent memory or insufficient parallelism
+1. `MemUnitBusy > 80%`: likely memory-bound
+1. Low occupancy: inspect VGPR and LDS usage
+1. High `LDSBankConflict`: shared memory access issue
+1. High `ALUStalledByLDS`: pipeline or LDS pressure issue
+1. High `SQ_WAIT_ANY`: latent memory or insufficient parallelism
 
 ## gfx1100 Notes
 
@@ -61,6 +62,6 @@ Important PMC constraint:
 Present results as:
 
 1. Summary
-2. Key metrics
-3. Ranked bottlenecks
-4. Actionable recommendations
+1. Key metrics
+1. Ranked bottlenecks
+1. Actionable recommendations

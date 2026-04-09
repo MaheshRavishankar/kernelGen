@@ -19,15 +19,17 @@ The bench executable creates its own HIP stream and passes it to the IREE HIP dr
 - **iree-compile**: install via `pip install iree-base-compiler` or from IREE release artifacts
 - **TheRock/ROCm**: for HIP runtime and headers
 
+Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
+
 ## Running
 
 ```bash
 # Single test
-python gemm/kernel_providers/iree/run.py --test gemm/tests/ai_high_medium --verify
+.venv/bin/python gemm/kernel_providers/iree/run.py --test gemm/tests/ai_high_medium --verify
 
 # All tests
-python gemm/kernel_providers/iree/run.py --test-dir gemm/tests -o results.json
+.venv/bin/python gemm/kernel_providers/iree/run.py --test-dir gemm/tests -o results.json
 
 # Specify GPU target
-python gemm/kernel_providers/iree/run.py --test-dir gemm/tests --gpu-target gfx1100
+.venv/bin/python gemm/kernel_providers/iree/run.py --test-dir gemm/tests --gpu-target gfx1100
 ```

@@ -108,6 +108,8 @@ rocprof-based bottleneck analysis.
 
 - All BF16 GEMM tests use `compute_type: f32` for accumulation.
 - Use `Release` for benchmarking unless debugging a correctness issue.
+- Use the repo venv for Python entrypoints, especially IREE and Fusilli
+  tooling.
 - TheRock path defaults to `~/kernelGen/TheRock`, override with
   `-DTHEROCK_PATH=<path>`.
 - GPU target defaults to `gfx1100`, override with `-DGPU_TARGETS=<target>`.

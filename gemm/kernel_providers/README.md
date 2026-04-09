@@ -17,12 +17,14 @@ Each subdirectory is a self-contained kernel provider for the GEMM operation. Pr
 All provider `run.py` scripts share the same interface:
 
 ```bash
-python gemm/kernel_providers/<provider>/run.py \
+.venv/bin/python gemm/kernel_providers/<provider>/run.py \
   --test-dir gemm/tests \
   --warmup 5 --timed 20 \
   --verify \
   -o results.json
 ```
+
+Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
 
 ## Current providers
 
