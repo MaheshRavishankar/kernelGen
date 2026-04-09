@@ -9,15 +9,17 @@ HIP/ROCm.
   `-DFUSILLI_SOURCE_DIR=<path>`
 - **IREE source**: defaults to `~/kernelGen/iree/iree/`, override with
   `-DIREE_SOURCE_DIR=<path>`
-- **Python tooling**: use the repo venv for `run.py`, especially for
-  `iree-compile`
+- **IREE compiler library**: Fusilli compiles through the IREE compiler C API.
+  If `libIREECompiler.so` is not discoverable from Python site-packages or
+  `LD_LIBRARY_PATH`, pass `--iree-compiler-lib <path>` to `run.py` or set
+  `FUSILLI_EXTERNAL_IREE_COMPILER_LIB=<path>`. A default can also be baked into
+  the benchmark with `-DIREE_COMPILER_LIB=<path>`.
 
 The runner sets:
 
-- `FUSILLI_COMPILE_BACKEND_USE_CLI=1` so Fusilli uses the `iree-compile` CLI
-  instead of the compiler C API
-- `FUSILLI_EXTERNAL_IREE_COMPILE` to the repo-venv `iree-compile` when present
 - `FUSILLI_CACHE_DIR` to `${KERNELGEN_CACHE_DIR:-~/.cache/kernelgen}/fusilli`
+- `FUSILLI_EXTERNAL_IREE_COMPILER_LIB` when a compiler library path is supplied
+  or found in the repo venv
 
 This keeps Fusilli compile artifacts separate from the IREE provider cache
 while preserving the shared kernelGen cache-root override.
@@ -29,6 +31,8 @@ while preserving the shared kernelGen cache-root override.
 1. Builds a `fusilli::Graph` with `Graph::tensor`, `Graph::matmul`,
    `Graph::validate`, and `Graph::compile`
 1. Creates a Fusilli AMDGPU handle on an external HIP stream
+1. Uses `libIREECompiler.so` through Fusilli's compiler C API during graph
+   compilation
 1. Allocates Fusilli buffers, dispatches the graph, and measures kernel time
    with HIP events on that stream
 

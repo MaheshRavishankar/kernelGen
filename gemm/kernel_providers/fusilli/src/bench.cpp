@@ -25,11 +25,7 @@ using namespace kernelgen::gemm::utils;
 
 #define HIP_CHECK(expr)                                                        \
   do {                                                                         \
-    hipError_t _err = (expr);                                                  \
-    if (_err != hipSuccess) {                                                  \
-      std::cerr << "HIP error code: " << static_cast<int>(_err) << "\n";       \
-      return 1;                                                                \
-    }                                                                          \
+    checkHip((expr), #expr);                                                   \
   } while (0)
 
 namespace {
@@ -47,14 +43,6 @@ using fusilli::TensorAttr;
 using VariantPack =
     std::unordered_map<std::shared_ptr<TensorAttr>, std::shared_ptr<Buffer>>;
 
-bool isOkOrPrint(const ErrorObject &error, const std::string &context) {
-  if (fusilli::isError(error)) {
-    std::cerr << "Fusilli error in " << context << ": " << error << "\n";
-    return false;
-  }
-  return true;
-}
-
 std::string errorMessage(const ErrorObject &error) {
   std::ostringstream oss;
   oss << error;
@@ -64,6 +52,41 @@ std::string errorMessage(const ErrorObject &error) {
 template <typename T>
 std::string errorMessage(const fusilli::ErrorOr<T> &errorOr) {
   return errorMessage(static_cast<ErrorObject>(errorOr));
+}
+
+void checkHip(hipError_t err, const char *expr) {
+  if (err == hipSuccess)
+    return;
+  std::ostringstream oss;
+  oss << expr << " failed: " << hipGetErrorName(err) << " ("
+      << hipGetErrorString(err) << ")";
+  throw std::runtime_error(oss.str());
+}
+
+int cleanupHipResources(hipEvent_t start, hipEvent_t stop, hipStream_t stream) {
+  int status = 0;
+  auto destroy = [&](hipError_t err, const char *expr) {
+    if (err == hipSuccess)
+      return;
+    std::cerr << expr << " failed during cleanup: " << hipGetErrorName(err)
+              << " (" << hipGetErrorString(err) << ")\n";
+    status = 1;
+  };
+
+  if (start)
+    destroy(hipEventDestroy(start), "hipEventDestroy(start)");
+  if (stop)
+    destroy(hipEventDestroy(stop), "hipEventDestroy(stop)");
+  if (stream)
+    destroy(hipStreamDestroy(stream), "hipStreamDestroy(stream)");
+  return status;
+}
+
+void throwFusilliError(const ErrorObject &error, const std::string &context) {
+  if (fusilli::isError(error)) {
+    throw std::runtime_error("Fusilli error in " + context + ": " +
+                             errorMessage(error));
+  }
 }
 
 template <typename T>
@@ -188,6 +211,7 @@ int main(int argc, char **argv) {
   hipStream_t stream = nullptr;
   hipEvent_t start = nullptr;
   hipEvent_t stop = nullptr;
+  int exitCode = 0;
 
   try {
     const bool randomInit = inputAPath.empty() || inputBPath.empty();
@@ -244,15 +268,8 @@ int main(int argc, char **argv) {
     auto cTensor = graph->matmul(aTensor, bTensor, matmulAttr);
     cTensor->setOutput(true);
 
-    if (!isOkOrPrint(graph->validate(), "graph validation") ||
-        !isOkOrPrint(graph->compile(handle), "graph compile")) {
-      std::cout << "{\"provider\": \"fusilli\", \"kernel_time_us\": 0"
-                << ", \"success\": false"
-                << ", \"error\": \"fusilli graph build failed\"}" << std::endl;
-      if (stream)
-        HIP_CHECK(hipStreamDestroy(stream));
-      return 1;
-    }
+    throwFusilliError(graph->validate(), "graph validation");
+    throwFusilliError(graph->compile(handle), "graph compile");
 
     std::shared_ptr<Buffer> aBuffer;
     std::shared_ptr<Buffer> bBuffer;
@@ -297,15 +314,8 @@ int main(int argc, char **argv) {
     };
 
     for (int i = 0; i < warmup; ++i) {
-      if (!isOkOrPrint(graph->execute(handle, variantPack, workspace),
-                       "warmup execute")) {
-        std::cout << "{\"provider\": \"fusilli\", \"kernel_time_us\": 0"
-                  << ", \"success\": false"
-                  << ", \"error\": \"warmup invocation failed\"}" << std::endl;
-        if (stream)
-          HIP_CHECK(hipStreamDestroy(stream));
-        return 1;
-      }
+      throwFusilliError(graph->execute(handle, variantPack, workspace),
+                        "warmup execute");
     }
     HIP_CHECK(hipStreamSynchronize(stream));
 
@@ -313,19 +323,8 @@ int main(int argc, char **argv) {
     HIP_CHECK(hipEventCreate(&stop));
     HIP_CHECK(hipEventRecord(start, stream));
     for (int i = 0; i < timed; ++i) {
-      if (!isOkOrPrint(graph->execute(handle, variantPack, workspace),
-                       "timed execute")) {
-        std::cout << "{\"provider\": \"fusilli\", \"kernel_time_us\": 0"
-                  << ", \"success\": false"
-                  << ", \"error\": \"timed invocation failed\"}" << std::endl;
-        if (start)
-          HIP_CHECK(hipEventDestroy(start));
-        if (stop)
-          HIP_CHECK(hipEventDestroy(stop));
-        if (stream)
-          HIP_CHECK(hipStreamDestroy(stream));
-        return 1;
-      }
+      throwFusilliError(graph->execute(handle, variantPack, workspace),
+                        "timed execute");
     }
     HIP_CHECK(hipEventRecord(stop, stream));
     HIP_CHECK(hipEventSynchronize(stop));
@@ -353,22 +352,11 @@ int main(int argc, char **argv) {
     }
 
     std::cout << "}" << std::endl;
-
-    if (start)
-      HIP_CHECK(hipEventDestroy(start));
-    if (stop)
-      HIP_CHECK(hipEventDestroy(stop));
-    if (stream)
-      HIP_CHECK(hipStreamDestroy(stream));
-    return 0;
   } catch (const std::exception &e) {
     std::cerr << "Fusilli benchmark failed: " << e.what() << "\n";
-    if (start)
-      static_cast<void>(hipEventDestroy(start));
-    if (stop)
-      static_cast<void>(hipEventDestroy(stop));
-    if (stream)
-      static_cast<void>(hipStreamDestroy(stream));
-    return 1;
+    exitCode = 1;
   }
+
+  const int cleanupStatus = cleanupHipResources(start, stop, stream);
+  return exitCode == 0 ? cleanupStatus : 1;
 }

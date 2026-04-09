@@ -4,7 +4,6 @@
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -33,29 +32,43 @@ def find_bench_binary(build_dir: Path) -> Path:
     return binary
 
 
-def find_iree_compile(iree_compile_arg: str | None) -> Path:
-    if iree_compile_arg:
-        path = Path(iree_compile_arg)
+def find_iree_compiler_lib(compiler_lib_arg: str | None) -> Path | None:
+    if compiler_lib_arg:
+        path = Path(compiler_lib_arg).expanduser()
         if path.exists():
             return path
+        print(f"ERROR: libIREECompiler.so not found: {path}", file=sys.stderr)
+        sys.exit(1)
 
-    which = shutil.which("iree-compile")
-    candidates = [
-        *(venv / "bin" / "iree-compile" for venv in repo_venv_candidates()),
-        Path(which) if which else None,
-        Path.home() / "kernelGen" / "iree" / "build" / "tools" / "iree-compile",
-        Path.home() / ".local" / "bin" / "iree-compile",
-    ]
+    env_path = os.environ.get("FUSILLI_EXTERNAL_IREE_COMPILER_LIB")
+    if env_path:
+        path = Path(env_path).expanduser()
+        if path.exists():
+            return path
+        print(
+            f"ERROR: FUSILLI_EXTERNAL_IREE_COMPILER_LIB not found: {path}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    candidates: list[Path] = []
+    for venv in repo_venv_candidates():
+        candidates.extend(
+            (venv / "lib").glob(
+                "python*/site-packages/iree/compiler/_mlir_libs/libIREECompiler.so"
+            )
+        )
+        candidates.extend(
+            (venv / "lib").glob(
+                "python*/site-packages/iree_compiler/_mlir_libs/libIREECompiler.so"
+            )
+        )
+
     for candidate in candidates:
-        if candidate and candidate.exists():
+        if candidate.exists():
             return candidate
 
-    print(
-        "ERROR: iree-compile not found. Install it in the repo venv with "
-        "'.venv/bin/pip install iree-base-compiler' or pass --iree-compile.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    return None
 
 
 def collect_test_dirs(test_args, test_dir_arg):
@@ -108,13 +121,13 @@ def print_result(test_name: str, config: dict, output: dict):
     }
 
 
-def fusilli_env(iree_compile: Path) -> dict[str, str]:
+def fusilli_env(iree_compiler_lib: Path | None) -> dict[str, str]:
     env = os.environ.copy()
     cache_root = Path(
         env.get("KERNELGEN_CACHE_DIR", Path.home() / ".cache" / "kernelgen")
     )
-    env["FUSILLI_COMPILE_BACKEND_USE_CLI"] = "1"
-    env["FUSILLI_EXTERNAL_IREE_COMPILE"] = str(iree_compile)
+    if iree_compiler_lib:
+        env["FUSILLI_EXTERNAL_IREE_COMPILER_LIB"] = str(iree_compiler_lib)
     env["FUSILLI_CACHE_DIR"] = str(cache_root / "fusilli")
     env["KERNELGEN_GPU_TARGET"] = GPU_TARGET
     return env
@@ -122,7 +135,7 @@ def fusilli_env(iree_compile: Path) -> dict[str, str]:
 
 def run_one_test(
     bench: Path,
-    iree_compile: Path,
+    iree_compiler_lib: Path | None,
     test_dir: Path,
     warmup: int,
     timed: int,
@@ -160,7 +173,7 @@ def run_one_test(
         cmd,
         capture_output=True,
         text=True,
-        env=fusilli_env(iree_compile),
+        env=fusilli_env(iree_compiler_lib),
     )
 
     if result.returncode != 0:
@@ -204,9 +217,9 @@ def main():
         "--output", "-o", default=None, help="Write JSON results to file"
     )
     parser.add_argument(
-        "--iree-compile",
+        "--iree-compiler-lib",
         default=None,
-        help="Path to iree-compile binary used by Fusilli's CLI backend",
+        help="Path to libIREECompiler.so used by Fusilli's compiler C API",
     )
     args = parser.parse_args()
 
@@ -218,7 +231,7 @@ def main():
 
     build_dir = Path(args.build_dir).resolve()
     bench = find_bench_binary(build_dir)
-    iree_compile = find_iree_compile(args.iree_compile)
+    iree_compiler_lib = find_iree_compiler_lib(args.iree_compiler_lib)
     test_dirs = collect_test_dirs(args.test, args.test_dir)
 
     if not test_dirs:
@@ -238,7 +251,7 @@ def main():
     for test_dir in test_dirs:
         config, output = run_one_test(
             bench,
-            iree_compile,
+            iree_compiler_lib,
             test_dir,
             args.warmup,
             args.timed,
