@@ -1,7 +1,7 @@
 /// Fusilli GEMM benchmark executable.
 ///
 /// Builds a GEMM graph with the Fusilli frontend, JIT-compiles it on an
-/// external HIP stream, and measures kernel time with HIP events.
+/// AMDGPU handle, and measures kernel time with HIP events.
 
 #include "bench_utils.h"
 
@@ -21,8 +21,6 @@
 #include <unordered_map>
 #include <vector>
 
-using namespace kernelgen::gemm::utils;
-
 #define HIP_CHECK(expr)                                                        \
   do {                                                                         \
     checkHip((expr), #expr);                                                   \
@@ -30,20 +28,7 @@ using namespace kernelgen::gemm::utils;
 
 namespace {
 
-using fusilli::Backend;
-using fusilli::bf16;
-using fusilli::Buffer;
-using fusilli::DataType;
-using fusilli::ErrorObject;
-using fusilli::Graph;
-using fusilli::half;
-using fusilli::Handle;
-using fusilli::MatmulAttr;
-using fusilli::TensorAttr;
-using VariantPack =
-    std::unordered_map<std::shared_ptr<TensorAttr>, std::shared_ptr<Buffer>>;
-
-std::string errorMessage(const ErrorObject &error) {
+std::string errorMessage(const fusilli::ErrorObject &error) {
   std::ostringstream oss;
   oss << error;
   return oss.str();
@@ -51,7 +36,7 @@ std::string errorMessage(const ErrorObject &error) {
 
 template <typename T>
 std::string errorMessage(const fusilli::ErrorOr<T> &errorOr) {
-  return errorMessage(static_cast<ErrorObject>(errorOr));
+  return errorMessage(static_cast<fusilli::ErrorObject>(errorOr));
 }
 
 void checkHip(hipError_t err, const char *expr) {
@@ -63,7 +48,7 @@ void checkHip(hipError_t err, const char *expr) {
   throw std::runtime_error(oss.str());
 }
 
-int cleanupHipResources(hipEvent_t start, hipEvent_t stop, hipStream_t stream) {
+int cleanupHipResources(hipEvent_t start, hipEvent_t stop) {
   int status = 0;
   auto destroy = [&](hipError_t err, const char *expr) {
     if (err == hipSuccess)
@@ -77,12 +62,11 @@ int cleanupHipResources(hipEvent_t start, hipEvent_t stop, hipStream_t stream) {
     destroy(hipEventDestroy(start), "hipEventDestroy(start)");
   if (stop)
     destroy(hipEventDestroy(stop), "hipEventDestroy(stop)");
-  if (stream)
-    destroy(hipStreamDestroy(stream), "hipStreamDestroy(stream)");
   return status;
 }
 
-void throwFusilliError(const ErrorObject &error, const std::string &context) {
+void throwFusilliError(const fusilli::ErrorObject &error,
+                       const std::string &context) {
   if (fusilli::isError(error)) {
     throw std::runtime_error("Fusilli error in " + context + ": " +
                              errorMessage(error));
@@ -99,13 +83,13 @@ std::vector<T> bytesToVector(const std::vector<char> &bytes) {
   return out;
 }
 
-DataType dtypeToFusilli(const std::string &dtype) {
+fusilli::DataType dtypeToFusilli(const std::string &dtype) {
   if (dtype == "f16")
-    return DataType::Half;
+    return fusilli::DataType::Half;
   if (dtype == "bf16")
-    return DataType::BFloat16;
+    return fusilli::DataType::BFloat16;
   if (dtype == "f32")
-    return DataType::Float;
+    return fusilli::DataType::Float;
   throw std::runtime_error("Unsupported dtype for Fusilli: " + dtype);
 }
 
@@ -119,48 +103,52 @@ std::vector<int64_t> gemmStrides(int64_t rows, int64_t cols, bool transpose) {
 }
 
 template <typename T>
-std::shared_ptr<Buffer>
-allocateBuffer(const Handle &handle, const std::shared_ptr<TensorAttr> &tensor,
+std::shared_ptr<fusilli::Buffer>
+allocateBuffer(const fusilli::Handle &handle,
+               const std::shared_ptr<fusilli::TensorAttr> &tensor,
                std::vector<T> data) {
   std::vector<iree_hal_dim_t> shape;
   for (auto dim : tensor->getPhysicalDim()) {
     shape.push_back(static_cast<iree_hal_dim_t>(dim));
   }
 
-  auto bufferOr = Buffer::allocate(handle, shape, data);
+  auto bufferOr = fusilli::Buffer::allocate(handle, shape, data);
   if (fusilli::isError(bufferOr)) {
     throw std::runtime_error(errorMessage(bufferOr));
   }
-  return std::make_shared<Buffer>(std::move(*bufferOr));
+  return std::make_shared<fusilli::Buffer>(std::move(*bufferOr));
 }
 
 template <typename T>
-std::shared_ptr<Buffer>
-allocateZeroBuffer(const Handle &handle, const std::shared_ptr<TensorAttr> &t) {
+std::shared_ptr<fusilli::Buffer>
+allocateZeroBuffer(const fusilli::Handle &handle,
+                   const std::shared_ptr<fusilli::TensorAttr> &t) {
   return allocateBuffer(handle, t,
                         std::vector<T>(static_cast<size_t>(t->getVolume()),
                                        static_cast<T>(0.0f)));
 }
 
 template <typename T>
-std::shared_ptr<Buffer>
-makeInputBuffer(const Handle &handle, const std::shared_ptr<TensorAttr> &tensor,
+std::shared_ptr<fusilli::Buffer>
+makeInputBuffer(const fusilli::Handle &handle,
+                const std::shared_ptr<fusilli::TensorAttr> &tensor,
                 const std::string &inputPath, size_t expectedSize,
                 bool randomInit) {
   std::vector<T> host;
   if (randomInit) {
     std::vector<char> bytes(expectedSize);
-    fillDeterministic(bytes.data(), bytes.size());
+    kernelgen::gemm::utils::fillDeterministic(bytes.data(), bytes.size());
     host = bytesToVector<T>(bytes);
   } else {
-    host = bytesToVector<T>(loadNpy(inputPath));
+    host = bytesToVector<T>(kernelgen::gemm::utils::loadNpy(inputPath));
   }
   return allocateBuffer(handle, tensor, std::move(host));
 }
 
 template <typename T>
-std::vector<char> readOutputBytes(const Handle &handle,
-                                  const std::shared_ptr<Buffer> &buffer) {
+std::vector<char>
+readOutputBytes(const fusilli::Handle &handle,
+                const std::shared_ptr<fusilli::Buffer> &buffer) {
   std::vector<T> host;
   auto status = buffer->read(handle, host);
   if (fusilli::isError(status)) {
@@ -208,14 +196,13 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  hipStream_t stream = nullptr;
   hipEvent_t start = nullptr;
   hipEvent_t stop = nullptr;
   int exitCode = 0;
 
   try {
     const bool randomInit = inputAPath.empty() || inputBPath.empty();
-    const auto cfg = parseGemmConfig(configPath);
+    const auto cfg = kernelgen::gemm::utils::parseGemmConfig(configPath);
 
     if (cfg.alpha != 1.0f || cfg.beta != 0.0f) {
       throw std::runtime_error(
@@ -230,23 +217,21 @@ int main(int argc, char **argv) {
                                "matching input/output dtypes");
     }
 
-    const size_t sizeA =
-        static_cast<size_t>(cfg.M) * cfg.K * dtypeSize(cfg.dtype_A);
-    const size_t sizeB =
-        static_cast<size_t>(cfg.K) * cfg.N * dtypeSize(cfg.dtype_B);
-    const size_t sizeC =
-        static_cast<size_t>(cfg.M) * cfg.N * dtypeSize(cfg.dtype_C);
+    const size_t sizeA = static_cast<size_t>(cfg.M) * cfg.K *
+                         kernelgen::gemm::utils::dtypeSize(cfg.dtype_A);
+    const size_t sizeB = static_cast<size_t>(cfg.K) * cfg.N *
+                         kernelgen::gemm::utils::dtypeSize(cfg.dtype_B);
+    const size_t sizeC = static_cast<size_t>(cfg.M) * cfg.N *
+                         kernelgen::gemm::utils::dtypeSize(cfg.dtype_C);
 
-    HIP_CHECK(hipStreamCreate(&stream));
-
-    auto handleOr = Handle::create(Backend::AMDGPU, /*deviceId=*/0,
-                                   reinterpret_cast<uintptr_t>(stream));
+    auto handleOr = fusilli::Handle::create(fusilli::Backend::AMDGPU,
+                                            /*deviceId=*/0);
     if (fusilli::isError(handleOr)) {
       throw std::runtime_error(errorMessage(handleOr));
     }
-    Handle handle = std::move(*handleOr);
+    fusilli::Handle handle = std::move(*handleOr);
 
-    auto graph = std::make_shared<Graph>();
+    auto graph = std::make_shared<fusilli::Graph>();
     graph
         ->setName("kernelgen_fusilli_gemm_" + std::to_string(cfg.M) + "x" +
                   std::to_string(cfg.N) + "x" + std::to_string(cfg.K))
@@ -254,16 +239,16 @@ int main(int argc, char **argv) {
         .setComputeDataType(dtypeToFusilli(cfg.compute_type));
 
     auto aTensor =
-        graph->tensor(TensorAttr()
+        graph->tensor(fusilli::TensorAttr()
                           .setName("matrix_a")
                           .setDim(gemmDims(cfg.M, cfg.K))
                           .setStride(gemmStrides(cfg.M, cfg.K, cfg.transA)));
     auto bTensor =
-        graph->tensor(TensorAttr()
+        graph->tensor(fusilli::TensorAttr()
                           .setName("matrix_b")
                           .setDim(gemmDims(cfg.K, cfg.N))
                           .setStride(gemmStrides(cfg.K, cfg.N, cfg.transB)));
-    MatmulAttr matmulAttr;
+    fusilli::MatmulAttr matmulAttr;
     matmulAttr.setName("gemm_matmul");
     auto cTensor = graph->matmul(aTensor, bTensor, matmulAttr);
     cTensor->setOutput(true);
@@ -271,23 +256,23 @@ int main(int argc, char **argv) {
     throwFusilliError(graph->validate(), "graph validation");
     throwFusilliError(graph->compile(handle), "graph compile");
 
-    std::shared_ptr<Buffer> aBuffer;
-    std::shared_ptr<Buffer> bBuffer;
-    std::shared_ptr<Buffer> cBuffer;
-    std::shared_ptr<Buffer> workspace = nullptr;
+    std::shared_ptr<fusilli::Buffer> aBuffer;
+    std::shared_ptr<fusilli::Buffer> bBuffer;
+    std::shared_ptr<fusilli::Buffer> cBuffer;
+    std::shared_ptr<fusilli::Buffer> workspace = nullptr;
 
     if (cfg.dtype_A == "f16") {
-      aBuffer =
-          makeInputBuffer<half>(handle, aTensor, inputAPath, sizeA, randomInit);
-      bBuffer =
-          makeInputBuffer<half>(handle, bTensor, inputBPath, sizeB, randomInit);
-      cBuffer = allocateZeroBuffer<half>(handle, cTensor);
+      aBuffer = makeInputBuffer<fusilli::half>(handle, aTensor, inputAPath,
+                                               sizeA, randomInit);
+      bBuffer = makeInputBuffer<fusilli::half>(handle, bTensor, inputBPath,
+                                               sizeB, randomInit);
+      cBuffer = allocateZeroBuffer<fusilli::half>(handle, cTensor);
     } else if (cfg.dtype_A == "bf16") {
-      aBuffer =
-          makeInputBuffer<bf16>(handle, aTensor, inputAPath, sizeA, randomInit);
-      bBuffer =
-          makeInputBuffer<bf16>(handle, bTensor, inputBPath, sizeB, randomInit);
-      cBuffer = allocateZeroBuffer<bf16>(handle, cTensor);
+      aBuffer = makeInputBuffer<fusilli::bf16>(handle, aTensor, inputAPath,
+                                               sizeA, randomInit);
+      bBuffer = makeInputBuffer<fusilli::bf16>(handle, bTensor, inputBPath,
+                                               sizeB, randomInit);
+      cBuffer = allocateZeroBuffer<fusilli::bf16>(handle, cTensor);
     } else if (cfg.dtype_A == "f32") {
       aBuffer = makeInputBuffer<float>(handle, aTensor, inputAPath, sizeA,
                                        randomInit);
@@ -300,33 +285,35 @@ int main(int argc, char **argv) {
 
     auto workspaceSize = graph->getWorkspaceSize().value_or(0);
     if (workspaceSize > 0) {
-      auto wsOr = Buffer::allocateRaw(handle, workspaceSize);
+      auto wsOr = fusilli::Buffer::allocateRaw(handle, workspaceSize);
       if (fusilli::isError(wsOr)) {
         throw std::runtime_error(errorMessage(wsOr));
       }
-      workspace = std::make_shared<Buffer>(std::move(*wsOr));
+      workspace = std::make_shared<fusilli::Buffer>(std::move(*wsOr));
     }
 
-    const VariantPack variantPack = {
-        {aTensor, aBuffer},
-        {bTensor, bBuffer},
-        {cTensor, cBuffer},
-    };
+    const std::unordered_map<std::shared_ptr<fusilli::TensorAttr>,
+                             std::shared_ptr<fusilli::Buffer>>
+        variantPack = {
+            {aTensor, aBuffer},
+            {bTensor, bBuffer},
+            {cTensor, cBuffer},
+        };
 
     for (int i = 0; i < warmup; ++i) {
       throwFusilliError(graph->execute(handle, variantPack, workspace),
                         "warmup execute");
     }
-    HIP_CHECK(hipStreamSynchronize(stream));
+    HIP_CHECK(hipStreamSynchronize(nullptr));
 
     HIP_CHECK(hipEventCreate(&start));
     HIP_CHECK(hipEventCreate(&stop));
-    HIP_CHECK(hipEventRecord(start, stream));
+    HIP_CHECK(hipEventRecord(start, nullptr));
     for (int i = 0; i < timed; ++i) {
       throwFusilliError(graph->execute(handle, variantPack, workspace),
                         "timed execute");
     }
-    HIP_CHECK(hipEventRecord(stop, stream));
+    HIP_CHECK(hipEventRecord(stop, nullptr));
     HIP_CHECK(hipEventSynchronize(stop));
 
     float elapsedMs = 0.0f;
@@ -337,18 +324,18 @@ int main(int argc, char **argv) {
               << ", \"kernel_time_us\": " << avgUs << ", \"success\": true";
 
     if (!refPath.empty() && !randomInit) {
-      const auto refData = loadNpy(refPath);
+      const auto refData = kernelgen::gemm::utils::loadNpy(refPath);
       std::vector<char> hostC;
       if (cfg.dtype_C == "f16") {
-        hostC = readOutputBytes<half>(handle, cBuffer);
+        hostC = readOutputBytes<fusilli::half>(handle, cBuffer);
       } else if (cfg.dtype_C == "bf16") {
-        hostC = readOutputBytes<bf16>(handle, cBuffer);
+        hostC = readOutputBytes<fusilli::bf16>(handle, cBuffer);
       } else {
         hostC = readOutputBytes<float>(handle, cBuffer);
       }
-      const auto verifyResult =
-          verify(hostC.data(), refData.data(), sizeC, cfg.dtype_C);
-      printVerifyJson(verifyResult);
+      const auto verifyResult = kernelgen::gemm::utils::verify(
+          hostC.data(), refData.data(), sizeC, cfg.dtype_C);
+      kernelgen::gemm::utils::printVerifyJson(verifyResult);
     }
 
     std::cout << "}" << std::endl;
@@ -357,6 +344,6 @@ int main(int argc, char **argv) {
     exitCode = 1;
   }
 
-  const int cleanupStatus = cleanupHipResources(start, stop, stream);
+  const int cleanupStatus = cleanupHipResources(start, stop);
   return exitCode == 0 ? cleanupStatus : 1;
 }

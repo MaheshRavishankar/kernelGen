@@ -1,4 +1,4 @@
-"""Shared GEMM benchmark runner for providers that use IREE VMFB execution."""
+"""IREE GEMM benchmark runner utilities."""
 
 import argparse
 import json
@@ -12,6 +12,7 @@ from pathlib import Path
 MLIR_DTYPE_MAP = {"f16": "f16", "bf16": "bf16", "f32": "f32"}
 
 GPU_TARGET = os.environ.get("KERNELGEN_GPU_TARGET", "gfx1100")
+IREE_OPT_LEVEL = "O3"
 
 
 def find_bench_binary(build_dir: Path, provider_name: str) -> Path:
@@ -103,6 +104,7 @@ def compile_mlir(
         cmd = [
             str(iree_compile),
             mlir_path,
+            f"--iree-opt-level={IREE_OPT_LEVEL}",
             "--iree-hal-target-backends=rocm",
             f"--iree-hip-target={gpu_target}",
             "-o",
@@ -145,7 +147,7 @@ def run_one_test(
     cache_dir = Path(
         os.environ.get("KERNELGEN_CACHE_DIR", Path.home() / ".cache" / "kernelgen")
     )
-    vmfb_cache = cache_dir / "vmfb" / vmfb_cache_namespace / gpu_target
+    vmfb_cache = cache_dir / "vmfb" / vmfb_cache_namespace / gpu_target / IREE_OPT_LEVEL
     vmfb_cache.mkdir(parents=True, exist_ok=True)
     vmfb_path = vmfb_cache / f"{test_dir.name}.vmfb"
     if not vmfb_path.exists():

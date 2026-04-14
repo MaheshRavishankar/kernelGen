@@ -133,7 +133,7 @@ rocprof-based bottleneck analysis.
 - IREE source defaults to `~/kernelGen/iree/iree/`, override with
   `-DIREE_SOURCE_DIR=<path>`.
 - IREE `.vmfb` files are cached in
-  `~/.cache/kernelgen/vmfb/iree/<gpu_target>/`.
+  `~/.cache/kernelgen/vmfb/iree/<gpu_target>/O3/`.
 - Fusilli compile artifacts default to
   `${KERNELGEN_CACHE_DIR:-~/.cache/kernelgen}/fusilli/`.
 - All providers use HIP events on a HIP stream for timing.

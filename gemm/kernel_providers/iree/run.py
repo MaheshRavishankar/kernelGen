@@ -16,7 +16,7 @@ Usage:
   python gemm/kernel_providers/iree/run.py --test-dir gemm/tests --verify
 """
 
-from common import run_provider
+from iree_runner import run_provider
 
 
 def main():

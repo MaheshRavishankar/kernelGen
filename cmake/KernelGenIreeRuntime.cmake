@@ -3,13 +3,16 @@
 include(FetchContent)
 
 function(kernelgen_configure_iree_runtime)
-  set(_kernelgen_default_iree_source_dir "$ENV{HOME}/kernelGen/iree/iree")
-  if(DEFINED ENV{IREE_SOURCE_DIR} AND NOT "$ENV{IREE_SOURCE_DIR}" STREQUAL "")
-    set(_kernelgen_default_iree_source_dir "$ENV{IREE_SOURCE_DIR}")
+  if(NOT IREE_SOURCE_DIR)
+    if(DEFINED ENV{IREE_SOURCE_DIR} AND NOT "$ENV{IREE_SOURCE_DIR}" STREQUAL "")
+      set(IREE_SOURCE_DIR "$ENV{IREE_SOURCE_DIR}")
+    else()
+      set(IREE_SOURCE_DIR "$ENV{HOME}/kernelGen/iree/iree")
+    endif()
   endif()
 
   set(IREE_SOURCE_DIR
-      "${_kernelgen_default_iree_source_dir}"
+      "${IREE_SOURCE_DIR}"
       CACHE PATH "Path to the IREE source tree")
 
   if(NOT EXISTS "${IREE_SOURCE_DIR}/CMakeLists.txt")

@@ -30,11 +30,11 @@ while preserving the shared kernelGen cache-root override.
 
 1. Builds a `fusilli::Graph` with `Graph::tensor`, `Graph::matmul`,
    `Graph::validate`, and `Graph::compile`
-1. Creates a Fusilli AMDGPU handle on an external HIP stream
+1. Creates a Fusilli AMDGPU handle on the default HIP stream
 1. Uses `libIREECompiler.so` through Fusilli's compiler C API during graph
    compilation
 1. Allocates Fusilli buffers, dispatches the graph, and measures kernel time
-   with HIP events on that stream
+   with HIP events on the default stream
 
 ## Running
 
