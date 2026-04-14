@@ -1,0 +1,241 @@
+============================================================
+IREE GEMM benchmark — 17 test(s)
+============================================================
+  Test                               Problem  Types                                              Time           Perf
+  --------------------  --------------------  ----------------------------------------  -------------  -------------
+  ai_high_large_k         4096x  1024x150000  A=bf16 B=bf16 C=bf16 compute=f32             19092.0 us    65.91 TFLOPS
+  ai_high_medium          1285x  2048x  3840  A=bf16 B=bf16 C=bf16 compute=f32               391.8 us    51.59 TFLOPS PASS
+  ai_high_small            576x   576x  1280  A=bf16 B=bf16 C=bf16 compute=f32                83.7 us    10.14 TFLOPS PASS
+  ai_low_large_flat      21760x  3840x    20  A=bf16 B=bf16 C=bf16 compute=f32               351.4 us     9.51 TFLOPS
+  ai_low_skinny             16x   512x  1024  A=bf16 B=bf16 C=bf16 compute=f32                75.5 us     0.22 TFLOPS PASS
+  ai_low_small              32x   576x  2304  A=bf16 B=bf16 C=bf16 compute=f32                88.8 us     0.96 TFLOPS PASS
+  ai_medium_extreme     16800000x   128x   134  A=bf16 B=bf16 C=bf16 compute=f32             16139.1 us    35.71 TFLOPS
+  ai_medium_large         7680x   512x   304  A=bf16 B=bf16 C=bf16 compute=f32                96.7 us    24.73 TFLOPS PASS
+  ai_medium_small          576x   576x   165  A=bf16 B=bf16 C=bf16 compute=f32                69.0 us     1.59 TFLOPS PASS
+  ai_very_high_extreme  150000x 16384x  4096  A=bf16 B=bf16 C=bf16 compute=f32            301770.0 us    66.72 TFLOPS
+  ai_very_high_large     11520x  3840x  3840  A=bf16 B=bf16 C=bf16 compute=f32              4154.6 us    81.77 TFLOPS
+  ai_very_high_medium     3840x  3840x  2304  A=bf16 B=bf16 C=bf16 compute=f32               891.4 us    76.23 TFLOPS
+  ai_very_high_square     4096x  4096x  4096  A=bf16 B=bf16 C=bf16 compute=f32              1707.5 us    80.49 TFLOPS
+  ai_very_low_small_square     576x   576x    10  A=bf16 B=bf16 C=bf16 compute=f32                72.2 us     0.09 TFLOPS PASS
+  ai_very_low_small_wide     576x  2304x    10  A=bf16 B=bf16 C=bf16 compute=f32                75.1 us     0.35 TFLOPS PASS
+  ai_very_low_tiny           4x   384x     5  A=bf16 B=bf16 C=bf16 compute=f32                65.5 us     0.00 TFLOPS PASS
+  small_f16               1024x  1024x  1024  A=f16 B=f16 C=f16 compute=f32                  105.8 us    20.31 TFLOPS PASS
+============================================================
+17 passed, 0 failed, 0 skipped
+[
+  {
+    "test": "ai_high_large_k",
+    "M": 4096,
+    "N": 1024,
+    "K": 150000,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 19092,
+    "tflops": 65.91
+  },
+  {
+    "test": "ai_high_medium",
+    "M": 1285,
+    "N": 2048,
+    "K": 3840,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 391.76,
+    "tflops": 51.59,
+    "verified": true
+  },
+  {
+    "test": "ai_high_small",
+    "M": 576,
+    "N": 576,
+    "K": 1280,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 83.7381,
+    "tflops": 10.14,
+    "verified": true
+  },
+  {
+    "test": "ai_low_large_flat",
+    "M": 21760,
+    "N": 3840,
+    "K": 20,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 351.429,
+    "tflops": 9.51
+  },
+  {
+    "test": "ai_low_skinny",
+    "M": 16,
+    "N": 512,
+    "K": 1024,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 75.5436,
+    "tflops": 0.22,
+    "verified": true
+  },
+  {
+    "test": "ai_low_small",
+    "M": 32,
+    "N": 576,
+    "K": 2304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 88.8166,
+    "tflops": 0.96,
+    "verified": true
+  },
+  {
+    "test": "ai_medium_extreme",
+    "M": 16800000,
+    "N": 128,
+    "K": 134,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 16139.1,
+    "tflops": 35.71
+  },
+  {
+    "test": "ai_medium_large",
+    "M": 7680,
+    "N": 512,
+    "K": 304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 96.6552,
+    "tflops": 24.73,
+    "verified": true
+  },
+  {
+    "test": "ai_medium_small",
+    "M": 576,
+    "N": 576,
+    "K": 165,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 69.0445,
+    "tflops": 1.59,
+    "verified": true
+  },
+  {
+    "test": "ai_very_high_extreme",
+    "M": 150000,
+    "N": 16384,
+    "K": 4096,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 301770,
+    "tflops": 66.72
+  },
+  {
+    "test": "ai_very_high_large",
+    "M": 11520,
+    "N": 3840,
+    "K": 3840,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 4154.58,
+    "tflops": 81.77
+  },
+  {
+    "test": "ai_very_high_medium",
+    "M": 3840,
+    "N": 3840,
+    "K": 2304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 891.371,
+    "tflops": 76.23
+  },
+  {
+    "test": "ai_very_high_square",
+    "M": 4096,
+    "N": 4096,
+    "K": 4096,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 1707.47,
+    "tflops": 80.49
+  },
+  {
+    "test": "ai_very_low_small_square",
+    "M": 576,
+    "N": 576,
+    "K": 10,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 72.2435,
+    "tflops": 0.09,
+    "verified": true
+  },
+  {
+    "test": "ai_very_low_small_wide",
+    "M": 576,
+    "N": 2304,
+    "K": 10,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 75.061,
+    "tflops": 0.35,
+    "verified": true
+  },
+  {
+    "test": "ai_very_low_tiny",
+    "M": 4,
+    "N": 384,
+    "K": 5,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 65.5316,
+    "tflops": 0.0,
+    "verified": true
+  },
+  {
+    "test": "small_f16",
+    "M": 1024,
+    "N": 1024,
+    "K": 1024,
+    "dtype_A": "f16",
+    "dtype_B": "f16",
+    "dtype_C": "f16",
+    "compute_type": "f32",
+    "kernel_time_us": 105.75,
+    "tflops": 20.31,
+    "verified": true
+  }
+]
+Results written to reports/bd-1ke-iree.json

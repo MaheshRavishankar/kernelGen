@@ -1,0 +1,38 @@
+[
+  {
+    "test": "ai_very_high_large",
+    "M": 11520,
+    "N": 3840,
+    "K": 3840,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 4263.9,
+    "tflops": 79.68
+  },
+  {
+    "test": "ai_very_high_medium",
+    "M": 3840,
+    "N": 3840,
+    "K": 2304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 858.819,
+    "tflops": 79.12
+  },
+  {
+    "test": "ai_very_high_square",
+    "M": 4096,
+    "N": 4096,
+    "K": 4096,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 1792.48,
+    "tflops": 76.68
+  }
+]

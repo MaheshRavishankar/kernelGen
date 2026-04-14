@@ -1,0 +1,63 @@
+FAIL: ai_high_large_k (exit code 1)
+FAIL: ai_high_medium (exit code 1)
+FAIL: ai_high_small (exit code 1)
+FAIL: ai_low_large_flat (exit code 1)
+FAIL: ai_low_skinny (exit code 1)
+FAIL: ai_low_small (exit code 1)
+FAIL: ai_medium_extreme (exit code 1)
+FAIL: ai_medium_large (exit code 1)
+FAIL: ai_medium_small (exit code 1)
+FAIL: ai_very_high_extreme (exit code 1)
+FAIL: ai_very_low_small_square (exit code 1)
+FAIL: ai_very_low_small_wide (exit code 1)
+FAIL: ai_very_low_tiny (exit code 1)
+FAIL: small_f16 (exit code 1)
+============================================================
+native_hip GEMM benchmark — 17 test(s)
+============================================================
+  Test                               Problem  Types                                              Time           Perf
+  --------------------  --------------------  ----------------------------------------  -------------  -------------
+  ai_very_high_large     11520x  3840x  3840  A=bf16 B=bf16 C=bf16 compute=f32              4263.9 us    79.68 TFLOPS
+  ai_very_high_medium     3840x  3840x  2304  A=bf16 B=bf16 C=bf16 compute=f32               858.8 us    79.12 TFLOPS
+  ai_very_high_square     4096x  4096x  4096  A=bf16 B=bf16 C=bf16 compute=f32              1792.5 us    76.68 TFLOPS
+============================================================
+3 passed, 14 failed, 0 skipped
+[
+  {
+    "test": "ai_very_high_large",
+    "M": 11520,
+    "N": 3840,
+    "K": 3840,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 4263.9,
+    "tflops": 79.68
+  },
+  {
+    "test": "ai_very_high_medium",
+    "M": 3840,
+    "N": 3840,
+    "K": 2304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 858.819,
+    "tflops": 79.12
+  },
+  {
+    "test": "ai_very_high_square",
+    "M": 4096,
+    "N": 4096,
+    "K": 4096,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 1792.48,
+    "tflops": 76.68
+  }
+]
+Results written to reports/bd-1ke-native_hip.json

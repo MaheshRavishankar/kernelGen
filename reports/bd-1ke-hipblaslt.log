@@ -1,0 +1,241 @@
+============================================================
+hipblaslt GEMM benchmark — 17 test(s)
+============================================================
+  Test                               Problem  Types                                              Time           Perf
+  --------------------  --------------------  ----------------------------------------  -------------  -------------
+  ai_high_large_k         4096x  1024x150000  A=bf16 B=bf16 C=bf16 compute=f32             19445.9 us    64.71 TFLOPS
+  ai_high_medium          1285x  2048x  3840  A=bf16 B=bf16 C=bf16 compute=f32               366.5 us    55.14 TFLOPS PASS
+  ai_high_small            576x   576x  1280  A=bf16 B=bf16 C=bf16 compute=f32                26.7 us    31.79 TFLOPS PASS
+  ai_low_large_flat      21760x  3840x    20  A=bf16 B=bf16 C=bf16 compute=f32               551.4 us     6.06 TFLOPS
+  ai_low_skinny             16x   512x  1024  A=bf16 B=bf16 C=bf16 compute=f32                 9.2 us     1.83 TFLOPS PASS
+  ai_low_small              32x   576x  2304  A=bf16 B=bf16 C=bf16 compute=f32                13.5 us     6.31 TFLOPS PASS
+  ai_medium_extreme     16800000x   128x   134  A=bf16 B=bf16 C=bf16 compute=f32             24929.2 us    23.12 TFLOPS
+  ai_medium_large         7680x   512x   304  A=bf16 B=bf16 C=bf16 compute=f32                50.4 us    47.42 TFLOPS PASS
+  ai_medium_small          576x   576x   165  A=bf16 B=bf16 C=bf16 compute=f32                 9.8 us    11.23 TFLOPS PASS
+  ai_very_high_extreme  150000x 16384x  4096  A=bf16 B=bf16 C=bf16 compute=f32            308018.8 us    65.36 TFLOPS
+  ai_very_high_large     11520x  3840x  3840  A=bf16 B=bf16 C=bf16 compute=f32              4286.7 us    79.25 TFLOPS
+  ai_very_high_medium     3840x  3840x  2304  A=bf16 B=bf16 C=bf16 compute=f32               868.8 us    78.21 TFLOPS
+  ai_very_high_square     4096x  4096x  4096  A=bf16 B=bf16 C=bf16 compute=f32              1756.5 us    78.25 TFLOPS
+  ai_very_low_small_square     576x   576x    10  A=bf16 B=bf16 C=bf16 compute=f32                 6.8 us     0.97 TFLOPS PASS
+  ai_very_low_small_wide     576x  2304x    10  A=bf16 B=bf16 C=bf16 compute=f32                12.0 us     2.21 TFLOPS PASS
+  ai_very_low_tiny           4x   384x     5  A=bf16 B=bf16 C=bf16 compute=f32                 6.2 us     0.00 TFLOPS PASS
+  small_f16               1024x  1024x  1024  A=f16 B=f16 C=f16 compute=f32                   37.2 us    57.68 TFLOPS PASS
+============================================================
+17 passed, 0 failed, 0 skipped
+[
+  {
+    "test": "ai_high_large_k",
+    "M": 4096,
+    "N": 1024,
+    "K": 150000,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 19445.87,
+    "tflops": 64.71
+  },
+  {
+    "test": "ai_high_medium",
+    "M": 1285,
+    "N": 2048,
+    "K": 3840,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 366.52,
+    "tflops": 55.14,
+    "verified": true
+  },
+  {
+    "test": "ai_high_small",
+    "M": 576,
+    "N": 576,
+    "K": 1280,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 26.72,
+    "tflops": 31.79,
+    "verified": true
+  },
+  {
+    "test": "ai_low_large_flat",
+    "M": 21760,
+    "N": 3840,
+    "K": 20,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 551.38,
+    "tflops": 6.06
+  },
+  {
+    "test": "ai_low_skinny",
+    "M": 16,
+    "N": 512,
+    "K": 1024,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 9.19,
+    "tflops": 1.83,
+    "verified": true
+  },
+  {
+    "test": "ai_low_small",
+    "M": 32,
+    "N": 576,
+    "K": 2304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 13.46,
+    "tflops": 6.31,
+    "verified": true
+  },
+  {
+    "test": "ai_medium_extreme",
+    "M": 16800000,
+    "N": 128,
+    "K": 134,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 24929.23,
+    "tflops": 23.12
+  },
+  {
+    "test": "ai_medium_large",
+    "M": 7680,
+    "N": 512,
+    "K": 304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 50.42,
+    "tflops": 47.42,
+    "verified": true
+  },
+  {
+    "test": "ai_medium_small",
+    "M": 576,
+    "N": 576,
+    "K": 165,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 9.75,
+    "tflops": 11.23,
+    "verified": true
+  },
+  {
+    "test": "ai_very_high_extreme",
+    "M": 150000,
+    "N": 16384,
+    "K": 4096,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 308018.82,
+    "tflops": 65.36
+  },
+  {
+    "test": "ai_very_high_large",
+    "M": 11520,
+    "N": 3840,
+    "K": 3840,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 4286.69,
+    "tflops": 79.25
+  },
+  {
+    "test": "ai_very_high_medium",
+    "M": 3840,
+    "N": 3840,
+    "K": 2304,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 868.84,
+    "tflops": 78.21
+  },
+  {
+    "test": "ai_very_high_square",
+    "M": 4096,
+    "N": 4096,
+    "K": 4096,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 1756.5,
+    "tflops": 78.25
+  },
+  {
+    "test": "ai_very_low_small_square",
+    "M": 576,
+    "N": 576,
+    "K": 10,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 6.84,
+    "tflops": 0.97,
+    "verified": true
+  },
+  {
+    "test": "ai_very_low_small_wide",
+    "M": 576,
+    "N": 2304,
+    "K": 10,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 12.01,
+    "tflops": 2.21,
+    "verified": true
+  },
+  {
+    "test": "ai_very_low_tiny",
+    "M": 4,
+    "N": 384,
+    "K": 5,
+    "dtype_A": "bf16",
+    "dtype_B": "bf16",
+    "dtype_C": "bf16",
+    "compute_type": "f32",
+    "kernel_time_us": 6.24,
+    "tflops": 0.0,
+    "verified": true
+  },
+  {
+    "test": "small_f16",
+    "M": 1024,
+    "N": 1024,
+    "K": 1024,
+    "dtype_A": "f16",
+    "dtype_B": "f16",
+    "dtype_C": "f16",
+    "compute_type": "f32",
+    "kernel_time_us": 37.23,
+    "tflops": 57.68,
+    "verified": true
+  }
+]
+Results written to reports/bd-1ke-hipblaslt.json
