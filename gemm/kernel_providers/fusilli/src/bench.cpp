@@ -1,7 +1,7 @@
 /// Fusilli GEMM benchmark executable.
 ///
-/// Builds a GEMM graph with the Fusilli frontend, JIT-compiles it on an
-/// AMDGPU handle, and measures kernel time with HIP events.
+/// Builds and compiles a GEMM graph with the Fusilli frontend, then executes it
+/// with an AMDGPU runtime handle and measures kernel time with HIP events.
 
 #include "bench_utils.h"
 
@@ -12,9 +12,11 @@
 #endif
 #include <hip/hip_runtime_api.h>
 
+#include <concepts>
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -70,6 +72,32 @@ void throwFusilliError(const fusilli::ErrorObject &error,
   if (fusilli::isError(error)) {
     throw std::runtime_error("Fusilli error in " + context + ": " +
                              errorMessage(error));
+  }
+}
+
+template <typename GraphT>
+concept HasRuntimeIndependentCompile = requires(GraphT &graph) {
+  { graph.compile() } -> std::same_as<fusilli::ErrorObject>;
+};
+
+fusilli::Handle createRuntimeHandle() {
+  auto handleOr = fusilli::Handle::create(fusilli::Backend::AMDGPU,
+                                          /*deviceId=*/0);
+  if (fusilli::isError(handleOr)) {
+    throw std::runtime_error(errorMessage(handleOr));
+  }
+  return std::move(*handleOr);
+}
+
+void compileGraph(fusilli::Graph &graph,
+                  std::optional<fusilli::Handle> &runtimeHandle) {
+  // Prefer Fusilli's runtime-independent compile API when the configured
+  // checkout exposes it; older headers still require a handle for compile().
+  if constexpr (HasRuntimeIndependentCompile<fusilli::Graph>) {
+    throwFusilliError(graph.compile(), "graph compile");
+  } else {
+    runtimeHandle.emplace(createRuntimeHandle());
+    throwFusilliError(graph.compile(*runtimeHandle), "graph compile");
   }
 }
 
@@ -224,13 +252,6 @@ int main(int argc, char **argv) {
     const size_t sizeC = static_cast<size_t>(cfg.M) * cfg.N *
                          kernelgen::gemm::utils::dtypeSize(cfg.dtype_C);
 
-    auto handleOr = fusilli::Handle::create(fusilli::Backend::AMDGPU,
-                                            /*deviceId=*/0);
-    if (fusilli::isError(handleOr)) {
-      throw std::runtime_error(errorMessage(handleOr));
-    }
-    fusilli::Handle handle = std::move(*handleOr);
-
     auto graph = std::make_shared<fusilli::Graph>();
     graph
         ->setName("kernelgen_fusilli_gemm_" + std::to_string(cfg.M) + "x" +
@@ -254,7 +275,12 @@ int main(int argc, char **argv) {
     cTensor->setOutput(true);
 
     throwFusilliError(graph->validate(), "graph validation");
-    throwFusilliError(graph->compile(handle), "graph compile");
+    std::optional<fusilli::Handle> optionalHandle;
+    compileGraph(*graph, optionalHandle);
+    if (!optionalHandle) {
+      optionalHandle.emplace(createRuntimeHandle());
+    }
+    fusilli::Handle &handle = *optionalHandle;
 
     std::shared_ptr<fusilli::Buffer> aBuffer;
     std::shared_ptr<fusilli::Buffer> bBuffer;
