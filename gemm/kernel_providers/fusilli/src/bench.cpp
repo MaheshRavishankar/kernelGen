@@ -12,6 +12,7 @@
 #endif
 #include <hip/hip_runtime_api.h>
 
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -48,7 +49,7 @@ void checkHip(hipError_t err, const char *expr) {
   throw std::runtime_error(oss.str());
 }
 
-int cleanupHipResources(hipEvent_t start, hipEvent_t stop) {
+int cleanupHipResources(hipEvent_t start, hipEvent_t stop, hipStream_t stream) {
   int status = 0;
   auto destroy = [&](hipError_t err, const char *expr) {
     if (err == hipSuccess)
@@ -62,6 +63,8 @@ int cleanupHipResources(hipEvent_t start, hipEvent_t stop) {
     destroy(hipEventDestroy(start), "hipEventDestroy(start)");
   if (stop)
     destroy(hipEventDestroy(stop), "hipEventDestroy(stop)");
+  if (stream)
+    destroy(hipStreamDestroy(stream), "hipStreamDestroy(stream)");
   return status;
 }
 
@@ -73,9 +76,10 @@ void throwFusilliError(const fusilli::ErrorObject &error,
   }
 }
 
-fusilli::Handle createRuntimeHandle() {
-  auto handleOr = fusilli::Handle::create(fusilli::Backend::AMDGPU,
-                                          /*deviceId=*/0);
+fusilli::Handle createRuntimeHandle(hipStream_t stream) {
+  auto handleOr = fusilli::Handle::create(
+      fusilli::Backend::AMDGPU,
+      /*deviceId=*/0, reinterpret_cast<std::uintptr_t>(stream));
   if (fusilli::isError(handleOr)) {
     throw std::runtime_error(errorMessage(handleOr));
   }
@@ -205,6 +209,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  hipStream_t stream = nullptr;
   hipEvent_t start = nullptr;
   hipEvent_t stop = nullptr;
   int exitCode = 0;
@@ -257,7 +262,8 @@ int main(int argc, char **argv) {
 
     throwFusilliError(graph->validate(), "graph validation");
     throwFusilliError(graph->compile(), "graph compile");
-    fusilli::Handle handle = createRuntimeHandle();
+    HIP_CHECK(hipStreamCreate(&stream));
+    fusilli::Handle handle = createRuntimeHandle(stream);
 
     std::shared_ptr<fusilli::Buffer> aBuffer;
     std::shared_ptr<fusilli::Buffer> bBuffer;
@@ -307,16 +313,16 @@ int main(int argc, char **argv) {
       throwFusilliError(graph->execute(handle, variantPack, workspace),
                         "warmup execute");
     }
-    HIP_CHECK(hipStreamSynchronize(nullptr));
+    HIP_CHECK(hipStreamSynchronize(stream));
 
     HIP_CHECK(hipEventCreate(&start));
     HIP_CHECK(hipEventCreate(&stop));
-    HIP_CHECK(hipEventRecord(start, nullptr));
+    HIP_CHECK(hipEventRecord(start, stream));
     for (int i = 0; i < timed; ++i) {
       throwFusilliError(graph->execute(handle, variantPack, workspace),
                         "timed execute");
     }
-    HIP_CHECK(hipEventRecord(stop, nullptr));
+    HIP_CHECK(hipEventRecord(stop, stream));
     HIP_CHECK(hipEventSynchronize(stop));
 
     float elapsedMs = 0.0f;
@@ -347,6 +353,6 @@ int main(int argc, char **argv) {
     exitCode = 1;
   }
 
-  const int cleanupStatus = cleanupHipResources(start, stop);
+  const int cleanupStatus = cleanupHipResources(start, stop, stream);
   return exitCode == 0 ? cleanupStatus : 1;
 }
