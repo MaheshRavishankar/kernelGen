@@ -12,11 +12,9 @@
 #endif
 #include <hip/hip_runtime_api.h>
 
-#include <concepts>
 #include <cstring>
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -75,11 +73,6 @@ void throwFusilliError(const fusilli::ErrorObject &error,
   }
 }
 
-template <typename GraphT>
-concept HasRuntimeIndependentCompile = requires(GraphT &graph) {
-  { graph.compile() } -> std::same_as<fusilli::ErrorObject>;
-};
-
 fusilli::Handle createRuntimeHandle() {
   auto handleOr = fusilli::Handle::create(fusilli::Backend::AMDGPU,
                                           /*deviceId=*/0);
@@ -87,18 +80,6 @@ fusilli::Handle createRuntimeHandle() {
     throw std::runtime_error(errorMessage(handleOr));
   }
   return std::move(*handleOr);
-}
-
-void compileGraph(fusilli::Graph &graph,
-                  std::optional<fusilli::Handle> &runtimeHandle) {
-  // Prefer Fusilli's runtime-independent compile API when the configured
-  // checkout exposes it; older headers still require a handle for compile().
-  if constexpr (HasRuntimeIndependentCompile<fusilli::Graph>) {
-    throwFusilliError(graph.compile(), "graph compile");
-  } else {
-    runtimeHandle.emplace(createRuntimeHandle());
-    throwFusilliError(graph.compile(*runtimeHandle), "graph compile");
-  }
 }
 
 template <typename T>
@@ -275,12 +256,8 @@ int main(int argc, char **argv) {
     cTensor->setOutput(true);
 
     throwFusilliError(graph->validate(), "graph validation");
-    std::optional<fusilli::Handle> optionalHandle;
-    compileGraph(*graph, optionalHandle);
-    if (!optionalHandle) {
-      optionalHandle.emplace(createRuntimeHandle());
-    }
-    fusilli::Handle &handle = *optionalHandle;
+    throwFusilliError(graph->compile(), "graph compile");
+    fusilli::Handle handle = createRuntimeHandle();
 
     std::shared_ptr<fusilli::Buffer> aBuffer;
     std::shared_ptr<fusilli::Buffer> bBuffer;
