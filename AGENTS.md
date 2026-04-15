@@ -120,12 +120,18 @@ Reusable Codex skills live in:
 
 Available skills:
 
+- `implementer`
+- `review`
 - `gemm-kernel-writer`
 - `gemm-profiler`
 - `pm`
 
-Use them when the task is clearly about native HIP GEMM kernel iteration or
-rocprof-based bottleneck analysis.
+Use `implementer` for bead implementation work that should be carried through
+worktree setup, code changes, validation, review, commits, and PR handoff.
+Use `review` for reviewing kernelGen diffs, PRs, or changed files.
+Use `gemm-kernel-writer` when the task is clearly about native HIP GEMM kernel
+iteration.
+Use `gemm-profiler` for rocprof-based bottleneck analysis.
 Use `pm` for bead/PR sweeps that should launch sandboxed agents for ready
 implementation work, PR feedback follow-up, or closed-PR cleanup.
 
