@@ -76,7 +76,6 @@ Launch Codex inside the external bwrap sandbox:
 
 ```bash
 scripts/kernelgen-codex-sandbox.sh <bead-id> --timeout 2h -- \
-  -m alpine-alpha \
   "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>. Commit validated changes on that branch before exiting; if blocked, summarize the blocker clearly. When complete, send a short final completion message and exit."
 ```
 
@@ -105,8 +104,8 @@ When agents create commits, the commit message should describe the actual code
 or doc change being made. Avoid vague summaries that only restate the bead ID
 or workflow step.
 
-For implementation tasks, prefer a deepthink model such as `alpine-alpha`
-instead of the default model.
+For implementation tasks, use the configured Codex default model unless the
+user explicitly requests a model override.
 
 Use an explicit timeout for each Codex run. `scripts/kernelgen-codex-sandbox.sh`
 defaults to `--timeout 2h`, supports overriding with `--timeout <duration>`,

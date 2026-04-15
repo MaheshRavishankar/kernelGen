@@ -72,6 +72,8 @@ The prompt must include:
 For implementation and PR-follow-up prompts, explicitly require:
 
 - push or update the PR when done
+- for each addressed PR review comment, reply to that comment with what was
+  changed, or explain why no code change was needed
 - a short final completion message that includes the PR number so it can be
   recorded in `br`
 
