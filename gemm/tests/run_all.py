@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 PROVIDERS = {
+    "fusilli": "gemm/kernel_providers/fusilli/run.py",
     "hipblaslt": "gemm/kernel_providers/hipblaslt/run.py",
     "iree": "gemm/kernel_providers/iree/run.py",
     "native_hip": "gemm/kernel_providers/native_hip/run.py",

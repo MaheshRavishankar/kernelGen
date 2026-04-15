@@ -29,6 +29,7 @@ Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
 ## Current providers
 
 - **hipblaslt** — AMD hipBLAS-LT library. Uses `hipblasLtMatmul` with algorithm heuristics.
+- **fusilli** — Fusilli C++ graph frontend. Builds and compiles GEMM graphs in-process, then dispatches them through the shared IREE runtime on a HIP stream.
 - **iree** — IREE compiler. Compiles `linalg.matmul` MLIR to GPU kernels, dispatches via IREE runtime with external HIP stream.
 
 ## Adding a new provider
@@ -36,3 +37,10 @@ Use the repo venv for Python entrypoints, especially IREE and Fusilli tooling.
 1. Create `<name>/` with `CMakeLists.txt`, sources, and `run.py` following the common CLI.
 1. Add `KERNELGEN_ENABLE_<NAME>` option in the top-level `CMakeLists.txt`.
 1. Guard `add_subdirectory(<name>)` in `gemm/CMakeLists.txt`.
+
+## Shared IREE runtime
+
+Providers that execute through the IREE runtime (`iree`, `fusilli`) should
+include `KernelGenIreeRuntime` and call
+`kernelgen_configure_iree_runtime()` so the IREE runtime is configured once
+even when both providers are enabled.
