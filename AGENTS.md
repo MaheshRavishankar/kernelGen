@@ -76,7 +76,6 @@ Launch Codex inside the external bwrap sandbox:
 
 ```bash
 scripts/kernelgen-codex-sandbox.sh <bead-id> --timeout 2h -- \
-  -m alpine-alpha \
   "Your task prompt here. Bead: <bead-id>. Worktree: /home/mahesh/kernelGen/kernelGen-<bead-id>. Branch: users/MaheshRavishankar/<bead-id>-<shortDescription>. Commit validated changes on that branch before exiting; if blocked, summarize the blocker clearly. When complete, send a short final completion message and exit."
 ```
 
@@ -94,11 +93,19 @@ The prompt should explicitly include:
 - the concrete task to perform
 - an instruction to commit validated changes on the bead branch before exiting,
   or to report the blocker clearly if it cannot do so
+
+When a bead implementation is complete and a PR is opened, the completion
+handoff should include the PR number so it can be recorded back into `br`.
+
 - an instruction to send a short final completion message before exiting so the
   sandbox wrapper can terminate cleanly
 
-For implementation tasks, prefer a deepthink model such as `alpine-alpha`
-instead of the default model.
+When agents create commits, the commit message should describe the actual code
+or doc change being made. Avoid vague summaries that only restate the bead ID
+or workflow step.
+
+For implementation tasks, use the configured Codex default model unless the
+user explicitly requests a model override.
 
 Use an explicit timeout for each Codex run. `scripts/kernelgen-codex-sandbox.sh`
 defaults to `--timeout 2h`, supports overriding with `--timeout <duration>`,
@@ -113,11 +120,20 @@ Reusable Codex skills live in:
 
 Available skills:
 
+- `implementer`
+- `review`
 - `gemm-kernel-writer`
 - `gemm-profiler`
+- `pm`
 
-Use them when the task is clearly about native HIP GEMM kernel iteration or
-rocprof-based bottleneck analysis.
+Use `implementer` for bead implementation work that should be carried through
+worktree setup, code changes, validation, review, commits, and PR handoff.
+Use `review` for reviewing kernelGen diffs, PRs, or changed files.
+Use `gemm-kernel-writer` when the task is clearly about native HIP GEMM kernel
+iteration.
+Use `gemm-profiler` for rocprof-based bottleneck analysis.
+Use `pm` for bead/PR sweeps that should launch sandboxed agents for ready
+implementation work, PR feedback follow-up, or closed-PR cleanup.
 
 ## Key Conventions
 

@@ -11,12 +11,13 @@
   "interface": {
     "displayName": "kernelGen Codex",
     "shortDescription": "Codex workflows for sandboxed kernelGen task execution.",
-    "longDescription": "Provides repo-local Codex skills for GEMM kernel writing and profiling, designed to run in the same bead and worktree flow as the existing Claude setup.",
+    "longDescription": "Provides repo-local Codex skills for bead implementation, review, GEMM kernel writing, and profiling, designed to run in the same bead and worktree flow as the existing Claude setup.",
     "developerName": "Mahesh Ravishankar",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write", "Shell"],
     "defaultPrompt": [
       "Implement the next ready kernelGen bead in a sandboxed worktree.",
+      "Review the current kernelGen diff for correctness and validation gaps.",
       "Optimize a native HIP GEMM kernel for gfx1100.",
       "Profile a GEMM provider and report the top bottlenecks."
     ],
