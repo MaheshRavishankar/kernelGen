@@ -44,6 +44,7 @@ void gemm_wmma_128x128(
     const ElemT *__restrict__ B, // [K, N] row-major
     ElemT *__restrict__ C,       // [M, N] row-major
     const int M, const int N, const int K,
+    const int ldb, const int ldc,
     const float alpha) {
 
   using Traits = WmmaTraits<ElemT>;
@@ -134,9 +135,9 @@ void gemm_wmma_128x128(
       for (int k = 0; k < 16; k += 2) {
         int row = b_load_group * 16 + k;
         ElemT v0 =
-            B[(int64_t)(k_base + row) * N + (block_n + b_load_col)];
+            B[(int64_t)(k_base + row) * ldb + (block_n + b_load_col)];
         ElemT v1 =
-            B[(int64_t)(k_base + row + 1) * N + (block_n + b_load_col)];
+            B[(int64_t)(k_base + row + 1) * ldb + (block_n + b_load_col)];
         uint packed;
         reinterpret_cast<ElemT *>(&packed)[0] = v0;
         reinterpret_cast<ElemT *>(&packed)[1] = v1;
@@ -202,7 +203,7 @@ void gemm_wmma_128x128(
         for (int j = 0; j < 8; j++) {
           int col = base_n + 2 * j + col_offset;
           float val = alpha * acc[tm][tn][j];
-          C[(int64_t)base_m * N + col] = ElemT(val);
+          C[(int64_t)base_m * ldc + col] = ElemT(val);
         }
       }
     }
@@ -212,7 +213,7 @@ void gemm_wmma_128x128(
 // Explicit instantiations.
 template __global__ void gemm_wmma_128x128<__hip_bfloat16>(
     const __hip_bfloat16 *, const __hip_bfloat16 *, __hip_bfloat16 *,
-    int, int, int, float);
+    int, int, int, int, int, float);
 template __global__ void gemm_wmma_128x128<_Float16>(
     const _Float16 *, const _Float16 *, _Float16 *,
-    int, int, int, float);
+    int, int, int, int, int, float);

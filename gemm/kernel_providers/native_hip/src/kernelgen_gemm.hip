@@ -22,12 +22,20 @@ __global__ void gemm_wmma_skinny(
 template <typename T>
 __global__ void gemm_wmma_128x128(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
-    const int M, const int N, const int K, const float alpha);
+    const int M, const int N, const int K,
+    const int ldb, const int ldc, const float alpha);
+
+template <typename T>
+__global__ void gemm_wmma_128x128_k_boundary(
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K,
+    const int ldb, const int ldc, const float alpha);
 
 template <typename T>
 __global__ void gemm_wmma_128x128_boundary(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
-    const int M, const int N, const int K, const float alpha);
+    const int M, const int N, const int K,
+    const int lda, const int ldb, const int ldc, const float alpha);
 
 static inline int ceil_div(int a, int b) { return (a + b - 1) / b; }
 
@@ -75,6 +83,12 @@ extern "C" kernelgen_status_t kernelgen_gemm(
     const int K = static_cast<int>(config->K);
     const float alpha = config->alpha;
     const bool is_f16 = (config->dtype_A == KERNELGEN_F16);
+    const bool m_aligned = (M % 128 == 0);
+    const bool n_aligned = (N % 128 == 0);
+    const bool k_aligned = (K % 32 == 0);
+    const int full_m = (M / 128) * 128;
+    const int tail_m = M - full_m;
+    const bool split_m_tail = (full_m > 0) && (tail_m > 0) && n_aligned;
 
     // Templated dispatch helper.
     auto dispatch = [&](auto *typed_null) {
@@ -88,12 +102,27 @@ extern "C" kernelgen_status_t kernelgen_gemm(
         if (M <= 32) {
             grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
             gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
-        } else if ((M % 128 == 0) && (N % 128 == 0) && (K % 32 == 0)) {
+        } else if (m_aligned && n_aligned && k_aligned) {
             grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
-            gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+            gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, N, N, alpha);
+        } else if (m_aligned && n_aligned) {
+            grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
+            gemm_wmma_128x128_k_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, N, N, alpha);
+        } else if (split_m_tail) {
+            grid = dim3(full_m / 128, N / 128);
+            if (k_aligned) {
+                gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, full_m, N, K, N, N, alpha);
+            } else {
+                gemm_wmma_128x128_k_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, full_m, N, K, N, N, alpha);
+            }
+
+            grid = dim3(1, N / 128);
+            const T *bottomA = dA + (int64_t)full_m * K;
+            T *bottomC = dC + (int64_t)full_m * N;
+            gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(bottomA, dB, bottomC, tail_m, N, K, K, N, N, alpha);
         } else {
             grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
-            gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+            gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, K, N, N, alpha);
         }
     };
 
