@@ -1,16 +1,17 @@
 // =============================================================================
 // Skinny-M WMMA GEMM kernel for AMD RDNA3 (gfx1100)
 //
-// Optimized for small-M shapes (M <= 32). Uses BM=128, BN=16 tiles:
+// Optimized for small-M shapes (M <= 32). Uses BM=128 staging, BN=16 tiles:
 //   - BN=16 maximizes grid parallelism along N (32 blocks for N=512)
-//   - BM=128 with 8 warps gives 256 waves total for latency hiding
-//   - For M=16, warps 1-7 compute OOB rows (waste compute, not bandwidth)
+//   - For K > 32, only 4 warps compute to cut OOB WMMA work for M=16/32
+//     and only the rows those warps consume are staged
+//   - For K <= 32, all 8 warps compute because the tiny target is launch/load
+//     dominated and measured faster with the original full-width balance point
 //   - Boundary-aware A loading zero-fills OOB rows (no wasted global reads)
 //
 // Tile design informed by hipblaslt profiling: hipblaslt uses MT64x16 with
-// 128 threads on these shapes, achieving 32 blocks and ~2 TFLOPS. Our version
-// uses BM=128 (vs 64) with 256 threads for 2x more waves to better hide
-// memory latency on gfx1100.
+// 128 threads on these shapes. A measured 128-thread native variant was slower
+// because each thread had to load twice as much B data.
 //
 // See native_hip_gemm.hip for host dispatch logic.
 // =============================================================================
@@ -36,7 +37,9 @@ static constexpr int WN = 16;
 static constexpr int WARPS_M = BM / WM; // 8
 static constexpr int WARPS_N = BN / WN; // 1
 static constexpr int NUM_WARPS = WARPS_M * WARPS_N; // 8
-static constexpr int BLOCK_SIZE = NUM_WARPS * WARP_SIZE; // 256
+static constexpr int BALANCED_COMPUTE_WARPS = 4;
+static constexpr int TINY_COMPUTE_WARPS = NUM_WARPS;
+static constexpr int BLOCK_SIZE = 256;
 
 // =============================================================================
 // Skinny-M GEMM kernel
@@ -61,7 +64,8 @@ void gemm_wmma_skinny(
   const int warp_id = tid / WARP_SIZE;
   const int lane_id = tid % WARP_SIZE;
 
-  // 8 warps stacked in M direction.
+  // Eight warps are stacked in M direction; the K-dependent guard below
+  // decides how many of them compute.
   const int warp_m = warp_id; // 0..7
 
   __shared__ ElemT smem_A[BM * SMEM_STRIDE];
@@ -76,7 +80,7 @@ void gemm_wmma_skinny(
   //
   // A tile: BM x BK = 128 x 32 elements.
   //   256 threads: row = tid/2 (0..127), half = tid%2 (0 or 1)
-  //   Each thread loads 16 elements (2 x uint4) for one half of one row.
+  //   Each thread loads 16 elements (2 x uint4).
   //   OOB rows (row >= M) zero-fill via boundary check.
   //
   // B tile: BK x BN = 32 x 16, transposed to BT[16][40].
@@ -87,6 +91,9 @@ void gemm_wmma_skinny(
   const int a_load_half = tid % 2;      // 0 or 1
   const int b_load_col = tid % 16;      // 0..15
   const int b_load_k_group = tid / 16;  // 0..15
+  const int compute_warps =
+      (K <= BK) ? TINY_COMPUTE_WARPS : BALANCED_COMPUTE_WARPS;
+  const int active_a_rows = compute_warps * WM;
 
   for (int k_base = 0; k_base < K; k_base += BK) {
 
@@ -94,26 +101,30 @@ void gemm_wmma_skinny(
     // Load A tile with M and K bounds checking.
     // -----------------------------------------------------------------------
     {
-      const int global_row = block_m + a_load_row;
-      const int col_start = k_base + a_load_half * 16;
-      ElemT *a_dst =
-          smem_A + a_load_row * SMEM_STRIDE + a_load_half * 16;
-
-      if (global_row < M && col_start + 16 <= K) {
-        const ElemT *a_src =
-            A + (int64_t)global_row * K + col_start;
-        load_128(a_dst, a_src);
-        load_128(a_dst + 8, a_src + 8);
-      } else if (global_row < M) {
-        #pragma unroll
-        for (int c = 0; c < 16; c++) {
-          int gc = col_start + c;
-          a_dst[c] = (gc < K) ? A[(int64_t)global_row * K + gc]
-                               : ElemT(0.0f);
-        }
+      if (a_load_row >= active_a_rows) {
+        // Extra loader threads are assigned to B only for larger-K shapes.
       } else {
-        zero_128(a_dst);
-        zero_128(a_dst + 8);
+        const int global_row = block_m + a_load_row;
+        const int col_start = k_base + a_load_half * 16;
+        ElemT *a_dst =
+            smem_A + a_load_row * SMEM_STRIDE + a_load_half * 16;
+
+        if (global_row < M && col_start + 16 <= K) {
+          const ElemT *a_src =
+              A + (int64_t)global_row * K + col_start;
+          load_128(a_dst, a_src);
+          load_128(a_dst + 8, a_src + 8);
+        } else if (global_row < M) {
+          #pragma unroll
+          for (int c = 0; c < 16; c++) {
+            int gc = col_start + c;
+            a_dst[c] = (gc < K) ? A[(int64_t)global_row * K + gc]
+                                 : ElemT(0.0f);
+          }
+        } else {
+          zero_128(a_dst);
+          zero_128(a_dst + 8);
+        }
       }
     }
 
@@ -150,18 +161,20 @@ void gemm_wmma_skinny(
     // -----------------------------------------------------------------------
     // WMMA compute: each warp computes 1x1 tile (16x16).
     // -----------------------------------------------------------------------
-    #pragma unroll
-    for (int ki = 0; ki < BK; ki += WMMA_K) {
-      frag_t a_frag;
-      int smem_row_a = warp_m * WM + frag_row;
-      const ElemT *a_ptr = smem_A + smem_row_a * SMEM_STRIDE + ki;
-      a_frag = *reinterpret_cast<const frag_t *>(a_ptr);
+    if (warp_id < compute_warps) {
+      #pragma unroll
+      for (int ki = 0; ki < BK; ki += WMMA_K) {
+        frag_t a_frag;
+        int smem_row_a = warp_m * WM + frag_row;
+        const ElemT *a_ptr = smem_A + smem_row_a * SMEM_STRIDE + ki;
+        a_frag = *reinterpret_cast<const frag_t *>(a_ptr);
 
-      frag_t b_frag;
-      const ElemT *b_ptr = smem_BT + frag_row * SMEM_STRIDE + ki;
-      b_frag = *reinterpret_cast<const frag_t *>(b_ptr);
+        frag_t b_frag;
+        const ElemT *b_ptr = smem_BT + frag_row * SMEM_STRIDE + ki;
+        b_frag = *reinterpret_cast<const frag_t *>(b_ptr);
 
-      acc = Traits::wmma(a_frag, b_frag, acc);
+        acc = Traits::wmma(a_frag, b_frag, acc);
+      }
     }
 
     __syncthreads();
@@ -177,7 +190,7 @@ void gemm_wmma_skinny(
     int base_m = block_m + warp_m * WM + row_in_frag;
     int base_n = block_n;
 
-    if (base_m < M) {
+    if (warp_id < compute_warps && base_m < M) {
       #pragma unroll
       for (int j = 0; j < 8; j++) {
         int col = base_n + 2 * j + col_offset;
