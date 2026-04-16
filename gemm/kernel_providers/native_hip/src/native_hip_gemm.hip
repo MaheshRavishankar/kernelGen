@@ -5,6 +5,7 @@
 //   gemm_wmma_skinny.hip            — skinny-M kernel (M <= 32, BM=128 BN=16)
 //   gemm_low_k_stream.hip           — low-K streaming kernel (K <= 32)
 //   gemm_wmma_128x128.hip           — aligned kernel (M%128==0, N%128==0, K%32==0)
+//   gemm_wmma_128x128_k_boundary.hip — aligned M/N kernel with K tail handling
 //   gemm_wmma_128x128_boundary.hip  — boundary kernel (arbitrary M, N, K)
 // =============================================================================
 
@@ -26,7 +27,14 @@ __global__ void gemm_wmma_skinny(
 template <typename T>
 __global__ void gemm_wmma_128x128(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
-    const int M, const int N, const int K, const float alpha);
+    const int M, const int N, const int K,
+    const int ldb, const int ldc, const float alpha);
+
+template <typename T>
+__global__ void gemm_wmma_128x128_k_boundary(
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K,
+    const int ldb, const int ldc, const float alpha);
 
 template <typename T>
 __global__ void gemm_low_k_stream(
@@ -36,7 +44,8 @@ __global__ void gemm_low_k_stream(
 template <typename T>
 __global__ void gemm_wmma_128x128_boundary(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
-    const int M, const int N, const int K, const float alpha);
+    const int M, const int N, const int K,
+    const int lda, const int ldb, const int ldc, const float alpha);
 
 // =============================================================================
 // Host launch
@@ -70,34 +79,44 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   const float alpha = config.alpha;
 
   // Select kernel by M dimension, then by low-K/memory-bound balance point,
-  // then by alignment.
+  // then by alignment. M-tail split keeps full 128x128 interiors on the
+  // lower-overhead aligned/K-boundary kernels and confines the generic
+  // boundary kernel to the final partial M tile.
   // Skinny-M kernel uses BM=128 staging and BN=16 tiles. Narrow BN maximizes
   // grid parallelism along N; the kernel limits active compute warps for the
   // larger skinny shapes while retaining the full-width tiny-K balance point.
   // Low-K streaming keeps K<=32 shapes off the boundary WMMA path; K around
   // 128+ stays on WMMA because scalar dot work becomes compute-heavy.
-  dim3 grid;
-  dim3 block;
+  dim3 block(256);
 
-  enum KernelChoice { SKINNY, LOW_K_STREAM, ALIGNED_128, BOUNDARY_128 };
+  enum KernelChoice {
+    SKINNY,
+    LOW_K_STREAM,
+    ALIGNED_128,
+    K_BOUNDARY_128,
+    M_TAIL_SPLIT_128,
+    BOUNDARY_128
+  };
   KernelChoice choice;
 
+  const bool m_aligned = (M % 128 == 0);
+  const bool n_aligned = (N % 128 == 0);
+  const bool k_aligned = (K % 32 == 0);
+  const int full_m = (M / 128) * 128;
+  const int tail_m = M - full_m;
+  const bool split_m_tail = (full_m > 0) && (tail_m > 0) && n_aligned;
+
   if (M <= 32) {
-    // Skinny kernel: BM=128, BN=16, 256 threads.
-    grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
-    block = dim3(256);
     choice = SKINNY;
   } else if (K <= 32) {
-    grid = dim3(ceil_div(M, 16), ceil_div(N, 256));
-    block = dim3(256);
     choice = LOW_K_STREAM;
-  } else if ((M % 128 == 0) && (N % 128 == 0) && (K % 32 == 0)) {
-    grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
-    block = dim3(256);
+  } else if (m_aligned && n_aligned && k_aligned) {
     choice = ALIGNED_128;
+  } else if (m_aligned && n_aligned) {
+    choice = K_BOUNDARY_128;
+  } else if (split_m_tail) {
+    choice = M_TAIL_SPLIT_128;
   } else {
-    grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
-    block = dim3(256);
     choice = BOUNDARY_128;
   }
 
@@ -108,18 +127,51 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
     auto *dB = static_cast<const T *>(B);
     auto *dC = static_cast<T *>(C);
     switch (choice) {
-    case SKINNY:
+    case SKINNY: {
+      dim3 grid(ceil_div(M, 128), ceil_div(N, 16));
       gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
       break;
-    case LOW_K_STREAM:
+    }
+    case LOW_K_STREAM: {
+      dim3 grid(ceil_div(M, 16), ceil_div(N, 256));
       gemm_low_k_stream<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
       break;
-    case ALIGNED_128:
-      gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+    }
+    case ALIGNED_128: {
+      dim3 grid(ceil_div(M, 128), ceil_div(N, 128));
+      gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(
+          dA, dB, dC, M, N, K, N, N, alpha);
       break;
-    case BOUNDARY_128:
-      gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+    }
+    case K_BOUNDARY_128: {
+      dim3 grid(ceil_div(M, 128), ceil_div(N, 128));
+      gemm_wmma_128x128_k_boundary<T><<<grid, block, 0, stream>>>(
+          dA, dB, dC, M, N, K, N, N, alpha);
       break;
+    }
+    case M_TAIL_SPLIT_128: {
+      dim3 interior_grid(full_m / 128, N / 128);
+      if (k_aligned) {
+        gemm_wmma_128x128<T><<<interior_grid, block, 0, stream>>>(
+            dA, dB, dC, full_m, N, K, N, N, alpha);
+      } else {
+        gemm_wmma_128x128_k_boundary<T><<<interior_grid, block, 0, stream>>>(
+            dA, dB, dC, full_m, N, K, N, N, alpha);
+      }
+
+      dim3 bottom_grid(1, N / 128);
+      const T *bottomA = dA + (int64_t)full_m * K;
+      T *bottomC = dC + (int64_t)full_m * N;
+      gemm_wmma_128x128_boundary<T><<<bottom_grid, block, 0, stream>>>(
+          bottomA, dB, bottomC, tail_m, N, K, K, N, N, alpha);
+      break;
+    }
+    case BOUNDARY_128: {
+      dim3 grid(ceil_div(M, 128), ceil_div(N, 128));
+      gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(
+          dA, dB, dC, M, N, K, K, N, N, alpha);
+      break;
+    }
     }
   };
 
