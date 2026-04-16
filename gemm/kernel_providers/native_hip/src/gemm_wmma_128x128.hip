@@ -35,10 +35,11 @@ static constexpr int WARP_TILES_N = WN / WMMA_N;
 // GEMM kernel
 // =============================================================================
 
-// 8 warps with smaller warp tiles: 120 VGPRs, 0 scratch, high occupancy.
-// Hint 3 WGs/CU (max from LDS limit: 3*20480=61440 < 65536).
+// 8 warps with smaller warp tiles: 120 VGPRs, 0 scratch. The 2-WG/CU launch
+// bound gives the compiler a little more scheduling freedom than the strict
+// LDS residency limit while retaining enough waves to hide latency.
 template <typename ElemT>
-__global__ __launch_bounds__(BLOCK_SIZE, 3)
+__global__ __launch_bounds__(BLOCK_SIZE, 2)
 void gemm_wmma_128x128(
     const ElemT *__restrict__ A, // [M, K] row-major
     const ElemT *__restrict__ B, // [K, N] row-major
