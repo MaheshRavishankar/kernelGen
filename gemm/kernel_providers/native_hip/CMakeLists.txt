@@ -14,6 +14,7 @@ add_library(
   kernelgen_gemm_native_hip STATIC
   src/native_hip_gemm.hip
   src/gemm_wmma_skinny.hip
+  src/gemm_wmma_64x16_small_skinny.hip
   src/gemm_wmma_128x128.hip
   src/gemm_wmma_128x128_k_boundary.hip
   src/gemm_wmma_128x128_boundary.hip
@@ -22,6 +23,7 @@ add_library(
 set_source_files_properties(
   src/native_hip_gemm.hip
   src/gemm_wmma_skinny.hip
+  src/gemm_wmma_64x16_small_skinny.hip
   src/gemm_wmma_128x128.hip
   src/gemm_wmma_128x128_k_boundary.hip
   src/gemm_wmma_128x128_boundary.hip

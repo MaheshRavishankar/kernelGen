@@ -91,8 +91,14 @@ void gemm_wmma_skinny(
   const int a_load_half = tid % 2;      // 0 or 1
   const int b_load_col = tid % 16;      // 0..15
   const int b_load_k_group = tid / 16;  // 0..15
-  const int compute_warps =
-      (K <= BK) ? TINY_COMPUTE_WARPS : BALANCED_COMPUTE_WARPS;
+  const int remaining_m = M - block_m;
+  const int active_m_warps =
+      (remaining_m >= BM) ? NUM_WARPS : ((remaining_m + WM - 1) / WM);
+  const int compute_warps = (K <= BK)
+      ? TINY_COMPUTE_WARPS
+      : ((active_m_warps < BALANCED_COMPUTE_WARPS)
+             ? active_m_warps
+             : BALANCED_COMPUTE_WARPS);
   const int active_a_rows = compute_warps * WM;
 
   for (int k_base = 0; k_base < K; k_base += BK) {

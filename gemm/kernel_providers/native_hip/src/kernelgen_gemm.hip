@@ -20,6 +20,11 @@ __global__ void gemm_wmma_skinny(
     const int M, const int N, const int K, const float alpha);
 
 template <typename T>
+__global__ void gemm_wmma_64x16_small_skinny(
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
+
+template <typename T>
 __global__ void gemm_wmma_128x128(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
     const int M, const int N, const int K,
@@ -94,6 +99,9 @@ extern "C" kernelgen_status_t kernelgen_gemm(
     const int full_m = (M / 128) * 128;
     const int tail_m = M - full_m;
     const bool split_m_tail = (full_m > 0) && (tail_m > 0) && n_aligned;
+    const bool is_bf16 = (config->dtype_A == KERNELGEN_BF16);
+    const bool small_skinny_balance =
+        is_bf16 && K >= 512 && M > 32 && M <= 640 && N <= 640;
 
     // Templated dispatch helper.
     auto dispatch = [&](auto *typed_null) {
@@ -104,7 +112,11 @@ extern "C" kernelgen_status_t kernelgen_gemm(
 
         dim3 grid, block(256);
 
-        if (M <= 32) {
+        if (small_skinny_balance) {
+            dim3 small_block(128);
+            grid = dim3(ceil_div(M, 64), ceil_div(N, 16));
+            gemm_wmma_64x16_small_skinny<T><<<grid, small_block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+        } else if (M <= 32) {
             grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
             gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
         } else if (K <= 32) {

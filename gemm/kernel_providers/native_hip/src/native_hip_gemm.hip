@@ -3,6 +3,7 @@
 //
 // Kernel implementations are in separate files:
 //   gemm_wmma_skinny.hip            — skinny-M kernel (M <= 32, BM=128 BN=16)
+//   gemm_wmma_64x16_small_skinny.hip — small/skinny balance point
 //   gemm_low_k_stream.hip           — low-K streaming kernel (K <= 32)
 //   gemm_wmma_128x128.hip           — aligned kernel (M%128==0, N%128==0, K%32==0)
 //   gemm_wmma_128x128_k_boundary.hip — aligned M/N kernel with K tail handling
@@ -21,6 +22,11 @@
 // Forward declarations of templated kernel functions defined in separate TUs.
 template <typename T>
 __global__ void gemm_wmma_skinny(
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
+
+template <typename T>
+__global__ void gemm_wmma_64x16_small_skinny(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
     const int M, const int N, const int K, const float alpha);
 
@@ -78,19 +84,21 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   const int K = config.K;
   const float alpha = config.alpha;
 
-  // Select kernel by M dimension, then by low-K/memory-bound balance point,
-  // then by alignment. M-tail split keeps full 128x128 interiors on the
-  // lower-overhead aligned/K-boundary kernels and confines the generic
-  // boundary kernel to the final partial M tile.
-  // Skinny-M kernel uses BM=128 staging and BN=16 tiles. Narrow BN maximizes
-  // grid parallelism along N; the kernel limits active compute warps for the
-  // larger skinny shapes while retaining the full-width tiny-K balance point.
+  // Select kernel by small/skinny economics, then by the legacy skinny/low-K
+  // balance points, then by alignment. M-tail split keeps full 128x128
+  // interiors on the lower-overhead aligned/K-boundary kernels and confines
+  // the generic boundary kernel to the final partial M tile.
+  //
+  // The 64x16 small/skinny WMMA kernel covers larger small-output high-K
+  // shapes: it keeps BN=16 for N parallelism, uses a 64-row tile to reduce
+  // padded M work, and only activates valid M warps.
   // Low-K streaming keeps K<=32 shapes off the boundary WMMA path; K around
   // 128+ stays on WMMA because scalar dot work becomes compute-heavy.
   dim3 block(256);
 
   enum KernelChoice {
     SKINNY,
+    SMALL_SKINNY_64X16,
     LOW_K_STREAM,
     ALIGNED_128,
     K_BOUNDARY_128,
@@ -105,8 +113,12 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   const int full_m = (M / 128) * 128;
   const int tail_m = M - full_m;
   const bool split_m_tail = (full_m > 0) && (tail_m > 0) && n_aligned;
+  const bool small_skinny_balance =
+      is_bf16 && K >= 512 && M > 32 && M <= 640 && N <= 640;
 
-  if (M <= 32) {
+  if (small_skinny_balance) {
+    choice = SMALL_SKINNY_64X16;
+  } else if (M <= 32) {
     choice = SKINNY;
   } else if (K <= 32) {
     choice = LOW_K_STREAM;
@@ -130,6 +142,13 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
     case SKINNY: {
       dim3 grid(ceil_div(M, 128), ceil_div(N, 16));
       gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      break;
+    }
+    case SMALL_SKINNY_64X16: {
+      dim3 small_block(128);
+      dim3 grid(ceil_div(M, 64), ceil_div(N, 16));
+      gemm_wmma_64x16_small_skinny<T><<<grid, small_block, 0, stream>>>(
+          dA, dB, dC, M, N, K, alpha);
       break;
     }
     case LOW_K_STREAM: {
