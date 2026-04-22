@@ -50,6 +50,8 @@ void gemm_wmma_128x128_boundary(
 
   const int block_m = blockIdx.x * BM;
   const int block_n = blockIdx.y * BN;
+  const bool full_m_tile = block_m + BM <= M;
+  const bool full_n_tile = block_n + BN <= N;
 
   const int tid = threadIdx.x;
   const int warp_id = tid / WARP_SIZE;
@@ -78,6 +80,8 @@ void gemm_wmma_128x128_boundary(
   const int b_load_group = tid / 128;
 
   for (int k_base = 0; k_base < K; k_base += BK) {
+    const int k_remaining = K - k_base;
+    const bool full_k_tile = k_remaining >= BK;
 
     // -----------------------------------------------------------------------
     // Load A tile with M and K bounds checking.
@@ -86,20 +90,21 @@ void gemm_wmma_128x128_boundary(
     {
       const int global_row = block_m + a_load_row;
       const int col_start = k_base + a_load_half * 16;
-      ElemT *a_dst =
-          smem_A + a_load_row * SMEM_STRIDE + a_load_half * 16;
+      ElemT *a_dst = smem_A + a_load_row * SMEM_STRIDE + a_load_half * 16;
 
-      if (global_row < M && col_start + 16 <= K) {
-        const ElemT *a_src =
-            A + (int64_t)global_row * K + col_start;
+      if (full_m_tile && full_k_tile) {
+        const ElemT *a_src = A + (int64_t)global_row * K + col_start;
+        load_128(a_dst, a_src);
+        load_128(a_dst + 8, a_src + 8);
+      } else if (global_row < M && col_start + 16 <= K) {
+        const ElemT *a_src = A + (int64_t)global_row * K + col_start;
         load_128(a_dst, a_src);
         load_128(a_dst + 8, a_src + 8);
       } else if (global_row < M) {
         #pragma unroll
         for (int c = 0; c < 16; c++) {
           int gc = col_start + c;
-          a_dst[c] = (gc < K) ? A[(int64_t)global_row * K + gc]
-                               : ElemT(0.0f);
+          a_dst[c] = (gc < K) ? A[(int64_t)global_row * K + gc] : ElemT(0.0f);
         }
       } else {
         zero_128(a_dst);
@@ -112,20 +117,28 @@ void gemm_wmma_128x128_boundary(
     // -----------------------------------------------------------------------
     {
       const int global_col = block_n + b_load_col;
-      ElemT *bt_dst =
-          smem_BT + b_load_col * SMEM_STRIDE + b_load_group * 16;
+      ElemT *bt_dst = smem_BT + b_load_col * SMEM_STRIDE + b_load_group * 16;
 
-      if (global_col < N) {
+      if (full_n_tile && full_k_tile) {
+        #pragma unroll
+        for (int k = 0; k < 16; k += 2) {
+          const int row = b_load_group * 16 + k;
+          ElemT v0 = B[(int64_t)(k_base + row) * N + global_col];
+          ElemT v1 = B[(int64_t)(k_base + row + 1) * N + global_col];
+          uint packed;
+          reinterpret_cast<ElemT *>(&packed)[0] = v0;
+          reinterpret_cast<ElemT *>(&packed)[1] = v1;
+          *reinterpret_cast<uint *>(bt_dst + k) = packed;
+        }
+      } else if (global_col < N) {
         #pragma unroll
         for (int k = 0; k < 16; k += 2) {
           int row0 = k_base + b_load_group * 16 + k;
           int row1 = row0 + 1;
-          ElemT v0 = (row0 < K)
-              ? B[(int64_t)row0 * N + global_col]
-              : ElemT(0.0f);
-          ElemT v1 = (row1 < K)
-              ? B[(int64_t)row1 * N + global_col]
-              : ElemT(0.0f);
+          ElemT v0 =
+              (row0 < K) ? B[(int64_t)row0 * N + global_col] : ElemT(0.0f);
+          ElemT v1 =
+              (row1 < K) ? B[(int64_t)row1 * N + global_col] : ElemT(0.0f);
           uint packed;
           reinterpret_cast<ElemT *>(&packed)[0] = v0;
           reinterpret_cast<ElemT *>(&packed)[1] = v1;
@@ -145,25 +158,28 @@ void gemm_wmma_128x128_boundary(
     // WMMA compute — identical to the aligned kernel.
     // Shared memory has been properly zero-filled for OOB positions.
     // -----------------------------------------------------------------------
+    const int k_compute_limit = (k_remaining < BK) ? k_remaining : BK;
     #pragma unroll
     for (int ki = 0; ki < BK; ki += WMMA_K) {
-      frag_t a_frag[WARP_TILES_M];
-      #pragma unroll
-      for (int tm = 0; tm < WARP_TILES_M; tm++) {
-        int smem_row = warp_m * WM + tm * WMMA_M + frag_row;
-        const ElemT *frag_ptr = smem_A + smem_row * SMEM_STRIDE + ki;
-        a_frag[tm] = *reinterpret_cast<const frag_t *>(frag_ptr);
-      }
-
-      #pragma unroll
-      for (int tn = 0; tn < WARP_TILES_N; tn++) {
-        int smem_row = warp_n * WN + tn * WMMA_N + frag_row;
-        const ElemT *frag_ptr = smem_BT + smem_row * SMEM_STRIDE + ki;
-        frag_t b_frag = *reinterpret_cast<const frag_t *>(frag_ptr);
-
+      if (ki < k_compute_limit) {
+        frag_t a_frag[WARP_TILES_M];
         #pragma unroll
         for (int tm = 0; tm < WARP_TILES_M; tm++) {
-          acc[tm][tn] = Traits::wmma(a_frag[tm], b_frag, acc[tm][tn]);
+          int smem_row = warp_m * WM + tm * WMMA_M + frag_row;
+          const ElemT *frag_ptr = smem_A + smem_row * SMEM_STRIDE + ki;
+          a_frag[tm] = *reinterpret_cast<const frag_t *>(frag_ptr);
+        }
+
+        #pragma unroll
+        for (int tn = 0; tn < WARP_TILES_N; tn++) {
+          int smem_row = warp_n * WN + tn * WMMA_N + frag_row;
+          const ElemT *frag_ptr = smem_BT + smem_row * SMEM_STRIDE + ki;
+          frag_t b_frag = *reinterpret_cast<const frag_t *>(frag_ptr);
+
+          #pragma unroll
+          for (int tm = 0; tm < WARP_TILES_M; tm++) {
+            acc[tm][tn] = Traits::wmma(a_frag[tm], b_frag, acc[tm][tn]);
+          }
         }
       }
     }
@@ -178,20 +194,37 @@ void gemm_wmma_128x128_boundary(
     const int row_in_frag = lane_id % 16;
     const int col_offset = (lane_id < 16) ? 0 : 1;
 
-    #pragma unroll
-    for (int tm = 0; tm < WARP_TILES_M; tm++) {
+    if (full_m_tile && full_n_tile) {
       #pragma unroll
-      for (int tn = 0; tn < WARP_TILES_N; tn++) {
-        int base_m = block_m + warp_m * WM + tm * WMMA_M + row_in_frag;
-        int base_n = block_n + warp_n * WN + tn * WMMA_N;
-
-        if (base_m < M) {
+      for (int tm = 0; tm < WARP_TILES_M; tm++) {
+        #pragma unroll
+        for (int tn = 0; tn < WARP_TILES_N; tn++) {
+          int base_m = block_m + warp_m * WM + tm * WMMA_M + row_in_frag;
+          int base_n = block_n + warp_n * WN + tn * WMMA_N;
           #pragma unroll
           for (int j = 0; j < 8; j++) {
             int col = base_n + 2 * j + col_offset;
-            if (col < N) {
-              float val = alpha * acc[tm][tn][j];
-              C[(int64_t)base_m * N + col] = ElemT(val);
+            float val = alpha * acc[tm][tn][j];
+            C[(int64_t)base_m * N + col] = ElemT(val);
+          }
+        }
+      }
+    } else {
+      #pragma unroll
+      for (int tm = 0; tm < WARP_TILES_M; tm++) {
+        #pragma unroll
+        for (int tn = 0; tn < WARP_TILES_N; tn++) {
+          int base_m = block_m + warp_m * WM + tm * WMMA_M + row_in_frag;
+          int base_n = block_n + warp_n * WN + tn * WMMA_N;
+
+          if (base_m < M) {
+            #pragma unroll
+            for (int j = 0; j < 8; j++) {
+              int col = base_n + 2 * j + col_offset;
+              if (col < N) {
+                float val = alpha * acc[tm][tn][j];
+                C[(int64_t)base_m * N + col] = ElemT(val);
+              }
             }
           }
         }
