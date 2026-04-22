@@ -13,6 +13,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -92,10 +93,12 @@ def compile_iree_vmfb(test_dir: Path, gpu_target: str) -> str:
             os.environ.get("KERNELGEN_CACHE_DIR", Path.home() / ".cache" / "kernelgen")
         )
         / "vmfb"
+        / "iree"
         / gpu_target
+        / "O3"
     )
 
-    # iree/run.py caches as {test_name}.vmfb
+    # Keep profile.py aligned with gemm/kernel_providers/iree/iree_runner.py.
     vmfb_path = cache_dir / f"{test_dir.name}.vmfb"
     if vmfb_path.exists():
         return str(vmfb_path)
@@ -111,19 +114,28 @@ def compile_iree_vmfb(test_dir: Path, gpu_target: str) -> str:
         f"  Compiling VMFB for {test_dir.name} (gpu_target={gpu_target})...",
         file=sys.stderr,
     )
+    cmd = [
+        sys.executable,
+        str(iree_run),
+        "--test",
+        str(test_dir),
+        "--gpu-target",
+        gpu_target,
+        "--timed",
+        "0",
+        "--warmup",
+        "0",
+    ]
+    iree_compile = shutil.which("iree-compile")
+    if not iree_compile:
+        venv_iree_compile = Path(sys.executable).resolve().parent / "iree-compile"
+        if venv_iree_compile.exists():
+            iree_compile = str(venv_iree_compile)
+    if iree_compile:
+        cmd += ["--iree-compile", iree_compile]
+
     subprocess.run(
-        [
-            sys.executable,
-            str(iree_run),
-            "--test",
-            str(test_dir),
-            "--gpu-target",
-            gpu_target,
-            "--timed",
-            "0",
-            "--warmup",
-            "0",
-        ],
+        cmd,
         capture_output=True,
         text=True,
     )
