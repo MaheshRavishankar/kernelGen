@@ -3,6 +3,7 @@
 //
 // Kernel implementations are in separate files:
 //   gemm_wmma_skinny.hip            — skinny-M kernel (M <= 32, BM=128 BN=16)
+//   gemm_low_k_stream.hip           — low-K streaming kernel (K <= 32)
 //   gemm_wmma_128x128.hip           — aligned kernel (M%128==0, N%128==0, K%32==0)
 //   gemm_wmma_128x128_boundary.hip  — boundary kernel (arbitrary M, N, K)
 // =============================================================================
@@ -24,6 +25,11 @@ __global__ void gemm_wmma_skinny(
 
 template <typename T>
 __global__ void gemm_wmma_128x128(
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
+
+template <typename T>
+__global__ void gemm_low_k_stream(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
     const int M, const int N, const int K, const float alpha);
 
@@ -63,13 +69,15 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   const int K = config.K;
   const float alpha = config.alpha;
 
-  // Select kernel by M dimension, then by alignment.
+  // Select kernel by M dimension, then by low-K balance point, then alignment.
   // Skinny-M kernel uses BM=128, BN=16 tiles: oversized BM gives 8 warps for
   // latency hiding, narrow BN maximizes grid parallelism along N.
+  // Low-K streaming avoids boundary WMMA's K padding and scattered stores for
+  // memory-bound K<=32 shapes. K around 128+ remains on WMMA.
   dim3 grid;
   dim3 block;
 
-  enum KernelChoice { SKINNY, ALIGNED_128, BOUNDARY_128 };
+  enum KernelChoice { SKINNY, LOW_K_STREAM, ALIGNED_128, BOUNDARY_128 };
   KernelChoice choice;
 
   if (M <= 32) {
@@ -78,6 +86,10 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
     grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
     block = dim3(256);
     choice = SKINNY;
+  } else if (K <= 32) {
+    grid = dim3(ceil_div(M, 16), ceil_div(N, 128));
+    block = dim3(256);
+    choice = LOW_K_STREAM;
   } else if ((M % 128 == 0) && (N % 128 == 0) && (K % 32 == 0)) {
     grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
     block = dim3(256);
@@ -97,6 +109,9 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
     switch (choice) {
     case SKINNY:
       gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      break;
+    case LOW_K_STREAM:
+      gemm_low_k_stream<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
       break;
     case ALIGNED_128:
       gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
