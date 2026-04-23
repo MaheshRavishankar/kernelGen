@@ -6,6 +6,7 @@
 //   gemm_low_k_stream.hip           — low-K streaming kernel (K <= 32)
 //   gemm_wmma_128x128.hip           — aligned kernel (M%128==0, N%128==0, K%32==0)
 //   gemm_wmma_128x128_boundary.hip  — boundary kernel (arbitrary M, N, K)
+//   gemm_wmma_64x64_boundary.hip    — small boundary kernel (small M/N)
 // =============================================================================
 
 #include "native_hip_gemm.h"
@@ -35,6 +36,11 @@ __global__ void gemm_low_k_stream(
 
 template <typename T>
 __global__ void gemm_wmma_128x128_boundary(
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
+
+template <typename T>
+__global__ void gemm_wmma_64x64_boundary(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
     const int M, const int N, const int K, const float alpha);
 
@@ -77,7 +83,7 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   dim3 grid;
   dim3 block;
 
-  enum KernelChoice { SKINNY, LOW_K_STREAM, ALIGNED_128, BOUNDARY_128 };
+  enum KernelChoice { SKINNY, LOW_K_STREAM, ALIGNED_128, BOUNDARY_128, BOUNDARY_64 };
   KernelChoice choice;
 
   if (M <= 32) {
@@ -94,6 +100,12 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
     grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
     block = dim3(256);
     choice = ALIGNED_128;
+  } else if (M <= 640 && N <= 640 && K >= 128) {
+    // Small boundary kernel: 64x64 tiles create enough CTAs to fill gfx1100
+    // on non-128-aligned small matrices while avoiding the skinny-M path.
+    grid = dim3(ceil_div(M, 64), ceil_div(N, 64));
+    block = dim3(128);
+    choice = BOUNDARY_64;
   } else {
     grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
     block = dim3(256);
@@ -118,6 +130,9 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
       break;
     case BOUNDARY_128:
       gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+      break;
+    case BOUNDARY_64:
+      gemm_wmma_64x64_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
       break;
     }
   };

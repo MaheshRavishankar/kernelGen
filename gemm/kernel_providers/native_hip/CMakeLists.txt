@@ -14,10 +14,12 @@ add_library(
   kernelgen_gemm_native_hip STATIC
   src/native_hip_gemm.hip src/gemm_wmma_skinny.hip src/gemm_wmma_128x128.hip
   src/gemm_wmma_128x128_boundary.hip src/gemm_low_k_stream.hip
+  src/gemm_wmma_64x64_boundary.hip
   src/kernelgen_gemm.hip)
 set_source_files_properties(
   src/native_hip_gemm.hip src/gemm_wmma_skinny.hip src/gemm_wmma_128x128.hip
   src/gemm_wmma_128x128_boundary.hip src/gemm_low_k_stream.hip
+  src/gemm_wmma_64x64_boundary.hip
   src/kernelgen_gemm.hip PROPERTIES LANGUAGE CXX)
 
 target_include_directories(
