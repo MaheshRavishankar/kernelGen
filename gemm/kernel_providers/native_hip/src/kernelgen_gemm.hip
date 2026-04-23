@@ -25,6 +25,11 @@ __global__ void gemm_wmma_128x128(
     const int M, const int N, const int K, const float alpha);
 
 template <typename T>
+__global__ void gemm_low_k_stream(
+    const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
+    const int M, const int N, const int K, const float alpha);
+
+template <typename T>
 __global__ void gemm_wmma_128x128_boundary(
     const T *__restrict__ A, const T *__restrict__ B, T *__restrict__ C,
     const int M, const int N, const int K, const float alpha);
@@ -83,16 +88,23 @@ extern "C" kernelgen_status_t kernelgen_gemm(
         const auto *dB = static_cast<const T *>(B);
         auto *dC = static_cast<T *>(C);
 
-        dim3 grid, block(256);
+        dim3 grid, block;
 
         if (M <= 32) {
             grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
+            block = dim3(256);
             gemm_wmma_skinny<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
+        } else if (K <= 32) {
+            grid = dim3(ceil_div(M, 16), ceil_div(N, 128));
+            block = dim3(256);
+            gemm_low_k_stream<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
         } else if ((M % 128 == 0) && (N % 128 == 0) && (K % 32 == 0)) {
             grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
+            block = dim3(256);
             gemm_wmma_128x128<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
         } else {
             grid = dim3(ceil_div(M, 128), ceil_div(N, 128));
+            block = dim3(256);
             gemm_wmma_128x128_boundary<T><<<grid, block, 0, stream>>>(dA, dB, dC, M, N, K, alpha);
         }
     };
