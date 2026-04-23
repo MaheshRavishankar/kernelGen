@@ -76,8 +76,9 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   const float alpha = config.alpha;
 
   // Select kernel by M dimension, then by low-K balance point, then alignment.
-  // Skinny-M kernel uses BM=128, BN=16 tiles: oversized BM gives 8 warps for
-  // latency hiding, narrow BN maximizes grid parallelism along N.
+  // Skinny-M kernel uses BM=128 staging and BN=16 tiles. Narrow BN maximizes
+  // grid parallelism along N; the kernel keeps B-load coverage from all 256
+  // threads while limiting large-K WMMA work to rows that can produce output.
   // Low-K streaming avoids boundary WMMA's K padding and scattered stores for
   // memory-bound K<=32 shapes. K around 128+ remains on WMMA.
   dim3 grid;
@@ -87,8 +88,7 @@ GemmResult run(const GemmConfig &config, void *A, void *B, void *C,
   KernelChoice choice;
 
   if (M <= 32) {
-    // Skinny kernel: BM=128, BN=16, 256 threads (8 warps).
-    // Oversized BM gives more waves for latency hiding; OOB warps help load.
+    // Skinny kernel: BM=128 staging, BN=16, 256 threads.
     grid = dim3(ceil_div(M, 128), ceil_div(N, 16));
     block = dim3(256);
     choice = SKINNY;
